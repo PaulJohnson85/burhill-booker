@@ -86,6 +86,18 @@ def init_db():
             )
         """))
 
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS member_search (
+                id         {id_col},
+                user_id    INTEGER REFERENCES users(id),
+                query      TEXT,
+                status     TEXT,
+                results    TEXT,
+                updated_at TEXT
+            )
+        """))
+
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
@@ -203,6 +215,29 @@ def get_all_bookings() -> list:
             """)
         ).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Member search (verify playing partner) ─────────────────────────────────
+
+def set_member_search(user_id: int, query: str, status: str, results: str = None):
+    """One row per user — replace any previous search."""
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM member_search WHERE user_id = :uid"),
+                     {"uid": user_id})
+        conn.execute(text("""
+            INSERT INTO member_search (user_id, query, status, results, updated_at)
+            VALUES (:uid, :query, :status, :results, :updated_at)
+        """), dict(uid=user_id, query=query, status=status, results=results,
+                   updated_at=datetime.now().isoformat()))
+
+
+def get_member_search(user_id: int) -> Optional[dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM member_search WHERE user_id = :uid"),
+            {"uid": user_id}
+        ).mappings().fetchone()
+        return dict(row) if row else None
 
 
 # ── Site bookings (synced from Burhill's book_history.php) ─────────────────

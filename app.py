@@ -318,6 +318,40 @@ def cancel_site(ref):
     return redirect(url_for("index"))
 
 
+@app.route("/api/verify_member", methods=["POST"])
+@login_required
+def verify_member():
+    """Kick off a background member search on the Burhill site."""
+    name = (request.json or {}).get("name", "").strip()
+    if not name:
+        return {"error": "no name"}, 400
+    if _SITE_BUSY.get(current_user.id):
+        return {"error": "busy"}, 409
+    db.set_member_search(current_user.id, name, "running")
+    _SITE_BUSY[current_user.id] = "verifying"
+    _run_site_subprocess(
+        current_user.id,
+        ["run_verify.py", "--user-id", str(current_user.id), "--query", name],
+        f"verify member {name!r}")
+    return {"status": "running"}
+
+
+@app.route("/api/verify_member", methods=["GET"])
+@login_required
+def verify_member_status():
+    row = db.get_member_search(current_user.id)
+    if not row:
+        return {"status": "none"}
+    out = {"status": row["status"], "query": row["query"]}
+    if row.get("results"):
+        import json as _json
+        try:
+            out["results"] = _json.loads(row["results"])
+        except Exception:
+            out["results"] = {}
+    return out
+
+
 @app.route("/cancel_on_site/<int:booking_id>", methods=["POST"])
 @login_required
 def cancel_on_site(booking_id):
