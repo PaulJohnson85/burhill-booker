@@ -136,14 +136,47 @@ def verify(page, query: str) -> dict:
     }""")
     _p(f"  [mschk1] {json.dumps(info)}")
 
+    # Read the page JS that the checkbox drives — set_msp / set_membernotselected
+    js_src = page.evaluate("""() => {
+        const out = {};
+        for (const fn of ['set_msp', 'set_membernotselected', 'set_memberselected']) {
+            try { out[fn] = window[fn] ? window[fn].toString().slice(0, 600) : 'undefined'; }
+            catch (e) { out[fn] = 'error'; }
+        }
+        out.snippets = Array.from(document.querySelectorAll('script:not([src])'))
+            .map(s => s.textContent || '')
+            .filter(t => /msp|membsearch|membernot/i.test(t))
+            .map(t => t.replace(/\\s+/g, ' ').slice(0, 1200));
+        return out;
+    }""")
+    _p(f"  [page js] {json.dumps(js_src)[:2500]}")
+
     popup = None
     try:
         with page.expect_popup(timeout=5_000) as pop_info:
+            # Real click so the onchange handler (set_msp) actually fires
             page.locator('input[name="mschk1"]').click(force=True)
         popup = pop_info.value
         _p(f"  [popup opened] {popup.url}")
     except Exception:
         _p("  [no popup window after mschk1 click]")
+
+    # What did the handler change? Diff the member-related inputs
+    state = page.evaluate("""() => {
+        const out = {};
+        for (const el of Array.from(document.querySelectorAll('input'))) {
+            if (/msp|mschk|BookMemb|BookNonMemb/i.test(el.name || el.id || '')) {
+                out[(el.name || el.id) + ':' + el.type] =
+                    el.type === 'checkbox' ? (el.checked + '/' + el.value) : el.value;
+            }
+        }
+        return out;
+    }""")
+    _p(f"  [post-click state] {json.dumps(state)[:800]}")
+
+    # Now submit the participants form — with set_msp fired, the server should
+    # perform the member search rather than an exact lookup
+    _submit_participants_form(page, "2", "Member search submit")
 
     target = popup if popup is not None else page
     try:
