@@ -37,6 +37,7 @@ def run(booking_id: int, dry_run: bool = False):
         "players":           row["players"],
         "date":              row["date"],
         "preferred_time":    row["preferred_time"],
+        "latest_time":       row.get("latest_time"),
         "lead_time_minutes": 2,
     }
     _p(f"[run_booking] booking={booking}")
@@ -95,7 +96,10 @@ def run(booking_id: int, dry_run: bool = False):
                 slot_url = _find_slot(page, booking)
 
                 if slot_url is None:
-                    msg = "No matching tee time found."
+                    msg = f"No tee time available from {booking['preferred_time']}"
+                    if booking.get("latest_time"):
+                        msg += f" to {booking['latest_time']}"
+                    msg += "."
                     _p(f"[run_booking] {msg}")
                     db.update_status(booking_id, "failed", message=msg)
                     notify.booking_failed(booking, msg)
@@ -121,6 +125,15 @@ def run(booking_id: int, dry_run: bool = False):
                     )
                     notify.booking_confirmed(booking, slot_time)
                     _p(f"[run_booking] ✅ booking {booking_id} confirmed at {slot_time}")
+                    # Refresh the dashboard's view of live site bookings
+                    if row.get("user_id"):
+                        try:
+                            from run_sync import fetch_site_bookings
+                            rows = fetch_site_bookings(page)
+                            db.replace_site_bookings(row["user_id"], rows)
+                            _p(f"[run_booking] site bookings re-synced ({len(rows)})")
+                        except Exception as e:
+                            _p(f"[run_booking] site sync after booking failed: {e}")
                 else:
                     msg = "Booking flow completed but could not verify on Burhill site."
                     db.update_status(booking_id, "failed", message=msg)

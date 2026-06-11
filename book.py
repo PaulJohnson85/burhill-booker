@@ -384,29 +384,41 @@ def _navigate_to_date(page, booking: dict = None):
 
 
 def _find_slot(page, booking: dict = None) -> Optional[str]:
-    """Return the href of the first available slot at or after preferred_time."""
+    """Return the href of the first available slot at or after preferred_time,
+    and (when latest_time is set) no later than latest_time."""
     b = booking or BOOKING
     preferred_h, preferred_m = map(int, b["preferred_time"].split(":"))
     preferred_mins = preferred_h * 60 + preferred_m
+    latest_mins = None
+    if b.get("latest_time"):
+        lh, lm = map(int, b["latest_time"].split(":"))
+        latest_mins = lh * 60 + lm
+
+    window = f">= {b['preferred_time']}"
+    if latest_mins is not None:
+        window += f" and <= {b['latest_time']}"
 
     # Time slot links have: gotdata=2 and Start=HH%3AMM in their href
     links = page.query_selector_all('a[href*="gotdata=2"][href*="Start="]')
-    print(f"  Found {len(links)} time slots. Looking for first slot >= {b['preferred_time']} …")
+    print(f"  Found {len(links)} time slots. Looking for first slot {window} …", flush=True)
 
     for link in links:
         href = link.get_attribute("href")
         text = link.inner_text().strip()
         # Parse time from URL parameter Start=HH%3AMM
-        import re
         m = re.search(r'Start=(\d{2}%3A\d{2})', href)
         if not m:
             continue
         slot_mins = parse_time(m.group(1))
         if slot_mins is None:
             continue
-        if slot_mins >= preferred_mins:
-            print(f"  → Selecting slot: {text}")
-            return href
+        if slot_mins < preferred_mins:
+            continue
+        if latest_mins is not None and slot_mins > latest_mins:
+            print(f"  No slot within window ({window}) — refusing later times.", flush=True)
+            return None
+        print(f"  → Selecting slot: {text}", flush=True)
+        return href
     return None
 
 

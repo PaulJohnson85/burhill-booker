@@ -233,6 +233,18 @@ def _cancel_ref(page, ref: str) -> bool:
     return True
 
 
+def _resync(page, user_id: int):
+    """Refresh the site_bookings table after a cancellation (already logged in,
+    on/near book_history.php)."""
+    try:
+        from run_sync import fetch_site_bookings
+        rows = fetch_site_bookings(page)
+        db.replace_site_bookings(user_id, rows)
+        _p(f"[run_cancel] site bookings re-synced ({len(rows)})")
+    except Exception as e:
+        _p(f"[run_cancel] site sync after cancel failed: {e}")
+
+
 def _set_credentials_for_user(user: dict):
     os.environ["BURHILL_USERNAME"] = user["burhill_user"]
     os.environ["BURHILL_PASSWORD"] = crypto.decrypt(user["burhill_pass"])
@@ -283,7 +295,10 @@ def run(booking_id: int):
     def _do(page):
         _login(page)
         _p("[run_cancel] logged in")
-        return _cancel_on_site(page, row)
+        ok = _cancel_on_site(page, row)
+        if ok and row.get("user_id"):
+            _resync(page, row["user_id"])
+        return ok
 
     try:
         ok = _with_browser(_do)
@@ -324,7 +339,10 @@ def run_by_ref(user_id: int, ref: str):
         page.goto(f"{BASE_URL}/book_history.php", wait_until="domcontentloaded",
                   timeout=30_000)
         page.wait_for_timeout(800)
-        return _cancel_ref(page, ref)
+        ok = _cancel_ref(page, ref)
+        if ok:
+            _resync(page, user_id)
+        return ok
 
     ok = _with_browser(_do)
     if ok:

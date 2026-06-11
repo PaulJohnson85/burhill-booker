@@ -132,6 +132,67 @@ def settings():
 
 # ── Booking routes ───────────────────────────────────────────────────────────
 
+def _build_calendar(bookings, site_bookings):
+    """Two month grids (this month + next) with per-day markers:
+    queued/booked portal bookings, live site bookings, open play days."""
+    import calendar as _cal
+    from open_play import _load_all
+
+    op_data = _load_all()  # keyed DD/MM/YYYY
+
+    queued, booked = {}, {}
+    for b in bookings:
+        if b["status"] in ("pending", "waiting", "running"):
+            queued.setdefault(b["date"], []).append(b["preferred_time"])
+        elif b["status"] == "booked":
+            booked.setdefault(b["date"], []).append(b["slot_time"] or b["preferred_time"])
+
+    site = {}
+    for sb in site_bookings:
+        # date_text is "DD/MM/YY HH:MM"
+        parts = (sb.get("date_text") or "").split()
+        if not parts:
+            continue
+        d = parts[0]
+        try:
+            dd, mm, yy = d.split("/")
+            key = f"{dd}/{mm}/20{yy}" if len(yy) == 2 else d
+        except ValueError:
+            continue
+        site.setdefault(key, []).append(parts[1] if len(parts) > 1 else "")
+
+    now = datetime.now()
+    months = []
+    y, m = now.year, now.month
+    for _ in range(2):
+        weeks = []
+        for week in _cal.monthcalendar(y, m):
+            row = []
+            for day in week:
+                if day == 0:
+                    row.append(None)
+                    continue
+                key = f"{day:02d}/{m:02d}/{y}"
+                op = op_data.get(key) or {}
+                row.append({
+                    "day": day,
+                    "is_today": (day == now.day and m == now.month and y == now.year),
+                    "is_past": datetime(y, m, day) < datetime(now.year, now.month, now.day),
+                    "queued": queued.get(key),
+                    "booked": booked.get(key),
+                    "site": site.get(key),
+                    "open_play": op.get("open_play_course"),
+                    "open_play_times": op.get("open_play_times"),
+                    "event": op.get("event"),
+                })
+            weeks.append(row)
+        months.append({"name": f"{_cal.month_name[m]} {y}", "weeks": weeks})
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return months
+
+
 @app.route("/")
 @login_required
 def index():
@@ -142,6 +203,7 @@ def index():
         bookings=bookings,
         site_bookings=site_bookings,
         site_busy=_SITE_BUSY.get(current_user.id),
+        calendar_months=_build_calendar(bookings, site_bookings),
         today=datetime.now().strftime("%Y-%m-%d"),
         booking_days=BOOKING_WINDOW["days_in_advance"],
         booking_time=BOOKING_WINDOW["open_time"],
@@ -166,11 +228,16 @@ def add():
 
     op = check_booking(date_str, course, preferred_time)
 
+    latest_time = (f.get("latest_time") or "").strip() or None
+    if latest_time and latest_time <= preferred_time:
+        latest_time = None  # ignore a window that ends before it starts
+
     booking_id = db.add_booking(
         course=course, players=players, date=date_str,
         preferred_time=preferred_time, opens_at=opens_at.isoformat(),
         op_status=op["status"], op_message=op["message"],
         user_id=current_user.id,
+        latest_time=latest_time,
     )
     sched.schedule_booking(booking_id, opens_at)
     return redirect(url_for("index"))

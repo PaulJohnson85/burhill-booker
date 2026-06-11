@@ -149,7 +149,7 @@
           <tr class="border-b border-white/5 hover:bg-white/5 transition" id="row-{{ b.id }}">
             <td class="px-5 py-4 font-semibold text-white">{{ b.date }}</td>
             <td class="px-5 py-4 text-gray-200">
-              {{ b.preferred_time }}
+              {{ b.preferred_time }}{% if b.latest_time %}<span class="text-gray-500">–{{ b.latest_time }}</span>{% endif %}
               {% if b.slot_time and b.slot_time != b.preferred_time %}
                 <span class="text-xs text-gray-400 ml-1">→ {{ b.slot_time }}</span>
               {% endif %}
@@ -292,6 +292,66 @@
       </table>
       {% endif %}
     </div>
+
+    <!-- Calendar -->
+    <div class="glass rounded-2xl overflow-hidden mt-8">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
+        <h2 class="text-sm font-bold text-white uppercase tracking-wider">Calendar</h2>
+        <div class="flex items-center gap-4 text-[11px] text-gray-400">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span> Booked</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span> Queued</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-300 inline-block"></span> On site</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Open play</span>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 p-5">
+        {% for month in calendar_months %}
+        <div>
+          <h3 class="text-sm font-semibold text-gray-200 mb-3 text-center">{{ month.name }}</h3>
+          <table class="w-full text-center text-xs">
+            <thead>
+              <tr class="text-gray-500">
+                <th class="py-1 font-medium">Mo</th><th class="py-1 font-medium">Tu</th><th class="py-1 font-medium">We</th>
+                <th class="py-1 font-medium">Th</th><th class="py-1 font-medium">Fr</th><th class="py-1 font-medium">Sa</th><th class="py-1 font-medium">Su</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for week in month.weeks %}
+              <tr>
+                {% for d in week %}
+                {% if d is none %}
+                <td class="py-1"></td>
+                {% else %}
+                {% set tip = [] %}
+                {% if d.booked %}{% set _ = tip.append('Booked ' ~ d.booked|join(', ')) %}{% endif %}
+                {% if d.queued %}{% set _ = tip.append('Queued ' ~ d.queued|join(', ')) %}{% endif %}
+                {% if d.site %}{% set _ = tip.append('On site ' ~ d.site|join(', ')) %}{% endif %}
+                {% if d.open_play %}{% set _ = tip.append('Open play: ' ~ d.open_play ~ (' ' ~ d.open_play_times if d.open_play_times else '')) %}{% endif %}
+                {% if d.event %}{% set _ = tip.append(d.event) %}{% endif %}
+                <td class="py-1">
+                  <div class="relative inline-flex flex-col items-center justify-start w-9 h-10 rounded-lg
+                              {% if d.is_today %}border border-green-500/60 bg-green-500/10{% endif %}
+                              {% if d.is_past %}opacity-40{% endif %}"
+                       {% if tip %}title="{{ tip|join(' • ') }}"{% endif %}>
+                    <span class="text-gray-200 pt-1">{{ d.day }}</span>
+                    <span class="flex gap-0.5 mt-0.5">
+                      {% if d.booked %}<span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>{% endif %}
+                      {% if d.queued %}<span class="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>{% endif %}
+                      {% if d.site %}<span class="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block"></span>{% endif %}
+                      {% if d.open_play %}<span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>{% endif %}
+                    </span>
+                  </div>
+                </td>
+                {% endif %}
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
     {% if site_busy %}
     <script>setTimeout(() => location.reload(), 5000);</script>
     {% endif %}
@@ -325,6 +385,16 @@
               onchange="checkOpenPlay()">
           </div>
 
+          <!-- Latest time (optional window end) -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Latest Time <span class="normal-case text-gray-500">(optional)</span></label>
+            <input type="time" name="latest_time" id="inp-latest"
+              class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+            <p class="text-[10px] text-gray-500 mt-1">Won't book any slot after this time</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
           <!-- Players -->
           <div>
             <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Players</label>
