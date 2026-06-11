@@ -181,7 +181,10 @@ def _navigate_to_date(page, booking: dict = None):
     # 4. On book_participants.php: set player count and submit gotdata=1
     players = str(b["players"])
     page.select_option('select[name="NumPeople"]', players)
-    click_and_wait(page.locator('input[name="gotdata"][value="1"]'), "NumPeople submit")
+    # Submit the participants form — find the visible submit button in the same form
+    # as the gotdata hidden input, rather than clicking the hidden input itself
+    submit_btn = page.locator('form:has(input[name="gotdata"][value="1"]) input[type="submit"]').first
+    click_and_wait(submit_btn, "NumPeople submit")
 
     # 5. If still on participants page, mark extra slots as guests then submit gotdata=2
     if "book_participants" in page.url:
@@ -191,7 +194,8 @@ def _navigate_to_date(page, booking: dict = None):
                     const cb = document.querySelector('input[name="BookNonMemb{i}"]');
                     if (cb) cb.checked = true;
                 """)
-        click_and_wait(page.locator('input[name="gotdata"][value="2"]'), "Participants confirm")
+        submit_btn2 = page.locator('form:has(input[name="gotdata"][value="2"]) input[type="submit"]').first
+        click_and_wait(submit_btn2, "Participants confirm")
     else:
         print(f"    [Participants] already progressed → {page.url}")
 
