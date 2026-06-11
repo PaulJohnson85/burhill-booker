@@ -183,6 +183,35 @@ def cancel(booking_id):
     return redirect(url_for("index"))
 
 
+@app.route("/cancel_on_site/<int:booking_id>", methods=["POST"])
+@login_required
+def cancel_on_site(booking_id):
+    """Cancel a booking that was actually made on the Burhill site."""
+    b = db.get_booking(booking_id)
+    if b and b["status"] == "booked" and (b["user_id"] == current_user.id or current_user.is_admin):
+        db.update_status(booking_id, "cancelling", message="Cancelling on Burhill site …")
+        import subprocess, sys as _sys, threading, os as _os
+
+        def _run():
+            script = _os.path.join(_os.path.dirname(__file__), "run_cancel.py")
+            try:
+                result = subprocess.run(
+                    [_sys.executable, script, "--booking-id", str(booking_id)],
+                    capture_output=True, text=True, timeout=600,
+                )
+            except subprocess.TimeoutExpired:
+                db.update_status(booking_id, "booked",
+                                 message="Cancel timed out — check the Burhill site")
+                return
+            if result.stdout:
+                print(f"[cancel {booking_id} stdout]\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[cancel {booking_id} stderr]\n{result.stderr}", flush=True)
+
+        threading.Thread(target=_run, daemon=True).start()
+    return redirect(url_for("index"))
+
+
 @app.route("/delete/<int:booking_id>", methods=["POST"])
 @login_required
 def delete(booking_id):
