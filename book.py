@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -217,29 +218,20 @@ def _navigate_to_date(page, booking: dict = None):
     target_day = b["date"].split("/")[0].lstrip("0")  # "16/06/2026" → "16"
     target_day_padded = b["date"].split("/")[0]        # "16" (already 2 digits)
 
-    # Log what clickable date elements exist on the page
-    all_links = page.locator('a[href*="StartDate"], td[onclick*="StartDate"], td[onclick*="start"]').all()
-    print(f"    Date elements (StartDate): {len(all_links)}")
-    all_tds = page.locator('table.cal_table td a, table td a, .calendar a, td.cal_available, td.cal_bookable').all()
-    print(f"    Calendar td/a elements: {len(all_tds)}")
-    for el in all_tds[:8]:
-        print(f"      text={el.inner_text().strip()!r} tag={el.evaluate('e=>e.tagName')}")
+    # Dates are <td> cells in a calendar table — find by exact text match
+    # Try padded ("15") and unpadded ("15") — both are the same for days >= 10
+    date_locator = None
+    for candidate in [target_day_padded, target_day]:
+        loc = page.locator(f'td').filter(has_text=re.compile(f'^{candidate}$'))
+        if loc.count() > 0:
+            date_locator = loc.first
+            print(f"    Found date cell '{candidate}' ({loc.count()} matches)")
+            break
 
-    # Try selectors in order of specificity
-    date_locator = (
-        page.locator(f'a[href*="StartDate={target_day_padded}"]').first
-        if page.locator(f'a[href*="StartDate={target_day_padded}"]').count() > 0
-        else page.locator(f'a[href*="StartDate={target_day}"]').first
-        if page.locator(f'a[href*="StartDate={target_day}"]').count() > 0
-        else page.locator(f'td[onclick*="{target_day}"]').first
-        if page.locator(f'td[onclick*="{target_day}"]').count() > 0
-        else page.get_by_role("link", name=target_day, exact=True).first
-        if page.get_by_role("link", name=target_day, exact=True).count() > 0
-        else page.get_by_role("link", name=target_day_padded, exact=True).first
-        if page.get_by_role("link", name=target_day_padded, exact=True).count() > 0
-        else None
-    )
     if date_locator is None:
+        # Log what's in the calendar for debugging
+        tds = page.locator('table td').all()
+        print(f"    Calendar tds: {[td.inner_text().strip() for td in tds[:30]]}")
         page.screenshot(path="date_not_found.png")
         raise RuntimeError(f"Date {target_day} not found in calendar — is the booking window open?")
 
