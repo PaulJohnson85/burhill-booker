@@ -231,24 +231,47 @@ def _submit_participants_form(page, gotdata: str, label=""):
 
 def _set_other_players(page, players: int, partner: str = ""):
     """Fill player slots 2..n on book_participants: slot 2 gets the named
-    member (typed into BookMemb1 with the member-search box ticked) when
-    partner is set, all other slots are marked as guests."""
+    member (resolved via Burhill's member-list AJAX and selected through the
+    page's own set_memberselected) when partner is set; all other slots are
+    marked as guests."""
     for i in range(1, players):
         if i == 1 and partner:
             try:
-                res = page.evaluate("""(partner) => {
-                    const out = [];
-                    const t = document.querySelector('input[name="BookMemb1"]');
-                    if (t) { t.value = partner; out.push('BookMemb1=' + partner); }
-                    const ms = document.querySelector('input[name="mschk1"]');
-                    if (ms) { ms.checked = true; out.push('mschk1 ticked'); }
+                res = page.evaluate("""async (partner) => {
+                    const r = await fetch('ajax/ajax_get_club_members.php');
+                    const members = await r.json();
+                    let m = members.find(x => x.Name === partner);
+                    if (!m) {
+                        const toks = partner.toLowerCase()
+                            .replace(/[,\\/]/g, ' ').split(/\\s+/).filter(Boolean);
+                        const cands = members.filter(x =>
+                            toks.every(t => (x.Name || '').toLowerCase().includes(t)));
+                        if (cands.length === 1) m = cands[0];
+                        else if (cands.length > 1)
+                            return 'ambiguous: ' + cands.slice(0, 5).map(x => x.Name).join('; ');
+                        else return 'not-found';
+                    }
+                    set_msp(1);
+                    set_memberselected(m.Name, m.PKey);
                     const g = document.querySelector('input[name="BookNonMemb1"]');
-                    if (g) { g.checked = false; out.push('BookNonMemb1 cleared'); }
-                    return out.join(', ') || 'no member inputs found';
+                    if (g) g.checked = false;
+                    return 'selected: ' + m.Name + ' ' + m.PKey;
                 }""", partner)
-                print(f"    [partner fill] {res}", flush=True)
+                print(f"    [partner member] {res}", flush=True)
+                if res == "not-found":
+                    raise RuntimeError(
+                        f"Playing partner '{partner}' not found in Burhill's member "
+                        f"list — use Verify in the booking form")
+                if res.startswith("ambiguous"):
+                    raise RuntimeError(
+                        f"Playing partner '{partner}' matches several members "
+                        f"({res[11:]}) — pick the exact one via Verify")
+            except RuntimeError:
+                raise
             except Exception as e:
-                print(f"    [partner fill failed] {str(e)[:100]}", flush=True)
+                print(f"    [partner member failed] {str(e)[:120]}", flush=True)
+                raise RuntimeError(
+                    f"Could not select playing partner '{partner}': {str(e)[:120]}")
         else:
             try:
                 page.evaluate(f"""() => {{

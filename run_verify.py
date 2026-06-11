@@ -110,135 +110,22 @@ def verify(page, query: str) -> dict:
     if _participants_state(page).get("curNum") != "2":
         _submit_participants_form(page, "1", "NumPeople submit")
 
-    # Clear the guest box for player 2
-    page.evaluate("""() => {
-        const g = document.querySelector('input[name="BookNonMemb1"]');
-        if (g) g.checked = false;
+    # Burhill exposes the full member list via a single AJAX call — fetch it
+    # and filter, showing every match so the user can pick the right one.
+    members = page.evaluate("""async () => {
+        const r = await fetch('ajax/ajax_get_club_members.php');
+        return await r.json();
     }""")
-
-    # Log the member-search inputs that the page JS works with
-    inputs_info = page.evaluate("""() => {
-        const out = [];
-        for (const id of ['memberenteredname1', 'BookMemb1', 'msname1',
-                          'membernotselected1', 'memberselected1']) {
-            const el = document.getElementById(id);
-            out.push(id + ': ' + (el ? el.outerHTML.slice(0, 200) : 'missing'));
-        }
-        return out;
-    }""")
-    for line in inputs_info:
-        _p(f"  [el] {line}")
-
-    # Watch the AJAX the autocomplete fires
-    ajax_log = []
-    def _on_response(resp):
-        u = resp.url
-        if ("e-s-p.com" in u and not u.endswith((".css", ".js", ".png", ".gif", ".jpg"))
-                and "book_participants.php?" != u.split("/")[-1]):
-            try:
-                body = resp.text()[:400]
-            except Exception:
-                body = "<unreadable>"
-            ajax_log.append({"url": u, "body": body})
-    page.on("response", _on_response)
-
-    # The visible autocomplete box is the BookMemb1 text input (no id;
-    # #memberenteredname1 is a hidden field). Focus it and type real keys.
-    page.evaluate("""() => {
-        const el = document.querySelector('input[name="BookMemb1"]');
-        if (el) { el.scrollIntoView({block: 'center'}); el.focus(); el.value = ''; }
-    }""")
-    page.keyboard.type(query, delay=120)
-    page.wait_for_timeout(3000)
-
-    for a in ajax_log[-10:]:
-        _p(f"  [ajax] {a['url'][:150]} → {a['body'][:300]}")
-
-    # Look for suggestion elements and pick the first one matching the query
-    pick = page.evaluate("""(q) => {
-        const ql = q.toLowerCase();
-        const cands = [];
-        for (const el of Array.from(document.querySelectorAll(
-                'li, .ui-menu-item, .autocomplete-suggestion, [onclick*="set_memberselected"], a, div, td'))) {
-            const txt = ((el.innerText || '').trim());
-            const oc = el.getAttribute && (el.getAttribute('onclick') || '');
-            if ((oc && oc.includes('set_memberselected')) ||
-                (txt && txt.length < 60 && txt.toLowerCase().includes(ql) &&
-                 el.offsetParent !== null && el.children.length === 0)) {
-                cands.push({txt: txt.slice(0, 60), oc: (oc || '').slice(0, 120)});
-            }
-        }
-        return cands.slice(0, 15);
-    }""", query)
-    _p(f"  [suggestions] {json.dumps(pick)[:1200]}")
-
-    clicked = page.evaluate("""(q) => {
-        const ql = q.toLowerCase();
-        for (const el of Array.from(document.querySelectorAll('*'))) {
-            const oc = el.getAttribute && el.getAttribute('onclick');
-            if (oc && oc.includes('set_memberselected')) { el.click(); return 'clicked onclick: ' + oc.slice(0, 100); }
-        }
-        for (const el of Array.from(document.querySelectorAll('li, .ui-menu-item, a, div'))) {
-            const txt = ((el.innerText || '').trim());
-            if (txt && txt.length < 60 && txt.toLowerCase().includes(ql) &&
-                el.offsetParent !== null && el.children.length === 0) {
-                el.click(); return 'clicked text: ' + txt;
-            }
-        }
-        return 'no-suggestion';
-    }""", query)
-    _p(f"  [pick] {clicked}")
-    page.wait_for_timeout(1000)
-
-    # Read the resolved state — pref ends up in mschk1.value
-    resolved = page.evaluate("""() => ({
-        pref: (document.getElementById('mschk1') || {}).value || '',
-        checked: !!(document.getElementById('mschk1') || {}).checked,
-        msname: (document.getElementById('msname1') || {}).innerHTML || '',
-        entered: (document.getElementById('memberenteredname1') || {}).value || '',
-    })""")
-    _p(f"  [resolved] {json.dumps(resolved)}")
-    if resolved.get("pref"):
-        name = resolved.get("msname") or resolved.get("entered") or query
-        return {"url": page.url,
-                "matches": [f"{name} ({resolved['pref']})"],
-                "error": "",
-                "raw": {"resolved": resolved, "ajax": ajax_log[-5:]}}
-
-    # Autocomplete didn't resolve a member — capture diagnostics
-    _p("  [no member resolved via autocomplete]")
-    captured = _capture_matches(page, query)
-    _p(f"  [captured] {json.dumps(captured)[:1500]}")
-
-    # Distil a friendly match list: select options or clickable names
-    matches = []
-    for sel in captured["selects"]:
-        for o in sel["options"]:
-            if query.lower() in o["text"].lower():
-                matches.append(o["text"])
-    matches.extend(c for c in captured["clickables"] if c not in matches)
-    for i in captured["inputs"]:
-        if i["name"].startswith("BookMembName") and i["value"] not in matches:
-            matches.append(i["value"])
-
-    # If the site accepted the name and moved on (e.g. to the calendar),
-    # extract resolved members ("CODE - Name" lines) from the page
-    if not matches and "book_participants" not in page.url:
-        import re as _re
-        for m in _re.finditer(r"\b[A-Z]{3,8}\d{1,3}\s*-\s*[A-Za-z'\- ]{3,40}",
-                              captured.get("body", "")):
-            t = m.group(0).strip()
-            if t not in matches:
-                matches.append(t)
-        if not matches:
-            matches.append(f"'{query}' — accepted by Burhill")
-        _p(f"  [accepted] search moved to {page.url}")
-
+    _p(f"  [members] fetched {len(members)}")
+    toks = [t for t in query.lower().replace(',', ' ').replace('/', ' ').split() if t]
+    matches = [m for m in members
+               if all(t in m.get("Name", "").lower() for t in toks)]
+    _p(f"  [matches] {json.dumps(matches[:10])}")
     return {
         "url": page.url,
-        "matches": matches[:10],
-        "error": captured.get("error", ""),
-        "raw": captured,
+        "matches": [m["Name"] for m in matches[:15]],
+        "error": "" if matches else f"No members matching '{query}'",
+        "raw": {"member_count": len(members)},
     }
 
 
