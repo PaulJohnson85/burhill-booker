@@ -282,6 +282,26 @@ def _book_slot(page, slot_url: str) -> bool:
             print(f"    [questionnaire] → {page.url}")
             continue
 
+        if "book_confirm" in cur:
+            print("  On confirmation page — clicking confirm …")
+            # Try submit button first, then any input[type=submit]
+            clicked = page.evaluate("""() => {
+                const sel = [
+                    'input[value*="Confirm" i]',
+                    'input[value*="Book" i]',
+                    'input[value*="Submit" i]',
+                    'input[type="submit"]',
+                    'button[type="submit"]',
+                ].join(',');
+                const btn = document.querySelector(sel);
+                if (btn) { btn.form ? btn.form.submit() : btn.click(); return btn.value || btn.innerText; }
+                return null;
+            }""")
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(800)
+            print(f"    [confirm clicked: {clicked}] → {page.url}")
+            continue
+
         btn = page.query_selector(
             'input[value*="Confirm" i]:not([type=hidden]), '
             'input[value*="Basket" i]:not([type=hidden]), '
@@ -298,7 +318,6 @@ def _book_slot(page, slot_url: str) -> bool:
             page.wait_for_timeout(800)
             print(f"  Post-confirm page: {page.url}")
             page.screenshot(path="booking_confirmed.png")
-            # If we ended up on home, verify; otherwise assume confirmed
             if "home.php" in page.url:
                 return _verify_booking(page, slot_url)
             return True
@@ -339,11 +358,6 @@ def _verify_booking(page, slot_url: str) -> bool:
         has_booking = True
 
     return has_booking
-        break
-
-    page.screenshot(path="confirmation_page.png")
-    print("  ⚠️  Could not find confirm button — screenshot saved to confirmation_page.png")
-    print(f"  Current URL: {page.url}")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
