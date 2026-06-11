@@ -29,26 +29,33 @@ def _capture_matches(page, query: str) -> dict:
     """Collect anything that looks like member search results."""
     return page.evaluate("""(query) => {
         const q = query.toLowerCase();
-        const out = {selects: [], clickables: [], inputs: []};
-        for (const sel of Array.from(document.querySelectorAll('select'))) {
-            const opts = Array.from(sel.options)
-                .map(o => ({text: (o.text || '').trim(), value: o.value}))
-                .filter(o => o.text);
-            if (opts.length) out.selects.push({name: sel.name || '', options: opts});
-        }
-        for (const el of Array.from(document.querySelectorAll('a, button, td[onclick], span[onclick]'))) {
-            const txt = (el.innerText || '').trim();
-            if (txt && txt.toLowerCase().includes(q)) {
-                out.clickables.push(txt.slice(0, 80));
+        const out = {selects: [], clickables: [], inputs: [], error: '', body: ''};
+        try {
+            for (const sel of Array.from(document.querySelectorAll('select'))) {
+                const opts = Array.from(sel.options || [])
+                    .map(o => ({text: ((o && o.text) || '').trim(), value: (o && o.value) || ''}))
+                    .filter(o => o.text);
+                if (opts.length) out.selects.push({name: sel.name || '', options: opts});
             }
-        }
-        for (const inp of Array.from(document.querySelectorAll('input[type=text], input[type=hidden]'))) {
-            const v = (inp.value || '').trim();
-            if (v && v.toLowerCase().includes(q)) {
-                out.inputs.push({name: inp.name || '', value: v.slice(0, 80)});
+            for (const el of Array.from(document.querySelectorAll('a, button, td[onclick], span[onclick]'))) {
+                const txt = ((el && (el.innerText || el.textContent)) || '').trim();
+                if (txt && txt.toLowerCase().includes(q)) {
+                    out.clickables.push(txt.slice(0, 80));
+                }
             }
+            for (const inp of Array.from(document.querySelectorAll('input[type=text], input[type=hidden]'))) {
+                const v = ((inp && inp.value) || '').trim();
+                if (v && v.toLowerCase().includes(q)) {
+                    out.inputs.push({name: inp.name || '', value: v.slice(0, 80)});
+                }
+            }
+            const body = (document.body && (document.body.innerText || document.body.textContent)) || '';
+            out.body = body.trim().slice(0, 800);
+            const m = body.match(/Error with participant[^\\n]*/i);
+            if (m) out.error = m[0].trim();
+        } catch (e) {
+            out.error = out.error || ('capture error: ' + e.message);
         }
-        out.body = document.body.innerText.trim().slice(0, 800);
         return out;
     }""", query)
 
@@ -108,6 +115,7 @@ def verify(page, query: str) -> dict:
     return {
         "url": page.url,
         "matches": matches[:10],
+        "error": captured.get("error", ""),
         "raw": captured,
     }
 

@@ -542,7 +542,11 @@
         btn.textContent = 'Verify';
         const matches = ((data.results || {}).matches) || [];
         if (!matches.length) {
-          box.innerHTML = '<span class="text-xs text-amber-400">No members matched \u201c' + data.query + '\u201d</span>';
+          const siteErr = (data.results || {}).error || '';
+          box.innerHTML = '<span class="text-xs text-amber-400">' +
+            (siteErr ? ('Burhill: ' + siteErr.replace(/</g, '&lt;'))
+                     : ('No members matched \u201c' + data.query + '\u201d')) +
+            ' \u2014 try the surname only</span>';
         } else {
           box.innerHTML = '<span class="text-xs text-gray-500 w-full">Click to use:</span>' +
             matches.map(m =>

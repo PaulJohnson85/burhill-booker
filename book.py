@@ -385,6 +385,19 @@ def _navigate_to_date(page, booking: dict = None):
         page.wait_for_load_state("domcontentloaded", timeout=30_000)
         page.wait_for_timeout(600)
 
+        # Fail fast on a member lookup error rather than looping all attempts
+        if partner and "book_participants" in page.url:
+            try:
+                body = page.evaluate(
+                    "() => (document.body && document.body.innerText) || ''")
+            except Exception:
+                body = ""
+            m = re.search(r"Error with participant[^\n]*", body, re.I)
+            if m:
+                raise RuntimeError(
+                    f"Burhill rejected playing partner '{partner}': {m.group(0).strip()} "
+                    f"— use Verify in the booking form to get the exact member name")
+
     print(f"    Current page: {page.url}")
 
     # 6. Click target date
