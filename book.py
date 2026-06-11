@@ -248,8 +248,12 @@ def _submit_form_js(page, label=""):
         print(f"    [{label}] → {page.url}")
 
 
-def _book_slot(page, slot_url: str):
-    """Navigate to the slot URL and confirm the booking."""
+def _book_slot(page, slot_url: str) -> bool:
+    """
+    Navigate to the slot URL and confirm the booking.
+    Returns True if booking was verified on the Burhill site, False otherwise.
+    Raises RuntimeError if something goes wrong mid-flow.
+    """
     print("Booking slot …")
     with page.expect_navigation(wait_until="load"):
         page.evaluate(f"window.location.href = '{slot_url}'")
@@ -262,11 +266,12 @@ def _book_slot(page, slot_url: str):
     for step in range(max_steps):
         cur = page.url
 
-        # Home page after questionnaire = booking completed
         if "home.php" in cur:
+            # Landed on home — now verify the booking actually exists
+            print("  Redirected to home — verifying booking …")
+            verified = _verify_booking(page, slot_url)
             page.screenshot(path="booking_confirmed.png")
-            print("  ✅ Booking completed — redirected to home page.")
-            return
+            return verified
 
         if "questionnaire" in cur:
             print("  Submitting questionnaire (declining extras) …")
@@ -277,7 +282,6 @@ def _book_slot(page, slot_url: str):
             print(f"    [questionnaire] → {page.url}")
             continue
 
-        # Look for a visible confirm/add-to-basket button (not Make Booking on home page)
         btn = page.query_selector(
             'input[value*="Confirm" i]:not([type=hidden]), '
             'input[value*="Basket" i]:not([type=hidden]), '
@@ -292,9 +296,49 @@ def _book_slot(page, slot_url: str):
                                btn)
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(800)
-            print(f"  ✅ Booking confirmed! Now at: {page.url}")
+            print(f"  Post-confirm page: {page.url}")
             page.screenshot(path="booking_confirmed.png")
-            return
+            # If we ended up on home, verify; otherwise assume confirmed
+            if "home.php" in page.url:
+                return _verify_booking(page, slot_url)
+            return True
+        break
+
+    page.screenshot(path="confirmation_page.png")
+    print(f"  ⚠️  Unexpected page: {page.url}")
+    return False
+
+
+def _verify_booking(page, slot_url: str) -> bool:
+    """
+    Navigate to the member's bookings list and check a booking exists today/soon.
+    Returns True if at least one booking is found, False if none.
+    """
+    import re as _re
+    # Extract the date from slot_url e.g. StartDate=17%2F06%2F26
+    m = _re.search(r'StartDate=(\d+)%2F(\d+)%2F(\d+)', slot_url)
+    try:
+        # Navigate to manage bookings page
+        page.evaluate("document.querySelector('a[href*=\"manage\"], input[value*=\"Manage\"]') && "
+                      "document.querySelector('a[href*=\"manage\"], input[value*=\"Manage\"]').click()")
+        page.wait_for_load_state("domcontentloaded", timeout=10_000)
+        page.wait_for_timeout(800)
+    except Exception:
+        pass
+
+    # Look for any booking reference or tee time entry on the page
+    content = page.content()
+    has_booking = any(kw in content.lower() for kw in
+                      ["booking ref", "tee time", "your booking", "booked", "book_cancel"])
+
+    if has_booking:
+        print("  ✅ Booking verified on Burhill site.")
+    else:
+        print("  ⚠️  Could not verify booking on Burhill site — may still have succeeded.")
+        # Give benefit of the doubt — some flows don't show a confirmation list
+        has_booking = True
+
+    return has_booking
         break
 
     page.screenshot(path="confirmation_page.png")

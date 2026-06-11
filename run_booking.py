@@ -50,8 +50,19 @@ def run(booking_id: int, dry_run: bool = False):
         with sync_playwright() as pw:
             import os
             headless = os.environ.get("HEADLESS", "0") == "1"
-            browser = pw.chromium.launch(headless=headless)
-            page = browser.new_page()
+            browser = pw.chromium.launch(
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
             try:
                 _login(page)
                 _navigate_to_date(page, booking)
@@ -72,15 +83,21 @@ def run(booking_id: int, dry_run: bool = False):
                                      message=f"[DRY RUN] Would book {slot_time}")
                     return
 
-                _book_slot(page, slot_url)
-                db.update_status(
-                    booking_id, "booked",
-                    slot_time=slot_time,
-                    booked_at=datetime.now().isoformat(),
-                    message=f"Booked at {slot_time}",
-                )
-                notify.booking_confirmed(booking, slot_time)
-                print(f"✅  Booking {booking_id} confirmed at {slot_time}")
+                confirmed = _book_slot(page, slot_url)
+                if confirmed:
+                    db.update_status(
+                        booking_id, "booked",
+                        slot_time=slot_time,
+                        booked_at=datetime.now().isoformat(),
+                        message=f"Booked at {slot_time}",
+                    )
+                    notify.booking_confirmed(booking, slot_time)
+                    print(f"✅  Booking {booking_id} confirmed at {slot_time}")
+                else:
+                    msg = "Booking flow completed but could not verify on Burhill site."
+                    db.update_status(booking_id, "failed", message=msg)
+                    notify.booking_failed(booking, msg)
+                    sys.exit(1)
 
             except PWTimeout as e:
                 msg = f"Timeout: {str(e)[:300]}"
@@ -88,6 +105,7 @@ def run(booking_id: int, dry_run: bool = False):
                 notify.booking_failed(booking, msg)
                 sys.exit(1)
             finally:
+                context.close()
                 browser.close()
 
     except Exception as e:
