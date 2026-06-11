@@ -26,6 +26,8 @@ from config import BOOKING_WINDOW
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=30)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 # ── Flask-Login ──────────────────────────────────────────────────────────────
 
@@ -83,7 +85,7 @@ def register():
             burhill_pass_encrypted=crypto.encrypt(burhill_pass),
         )
         row = db.get_user_by_id(user_id)
-        login_user(User(row))
+        login_user(User(row), remember=True)
         flash(f"Welcome, {name}! Your account is ready.", "success")
         return redirect(url_for("index"))
     return render_template("register.html")
