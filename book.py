@@ -139,6 +139,65 @@ def _login(page):
     print(f"  Logged in → {page.url}")
 
 
+def _dump_forms(page, label=""):
+    """Log every form's action and inputs/buttons — debugging aid for ESP pages."""
+    try:
+        info = page.evaluate("""() =>
+            Array.from(document.forms).map(f => ({
+                action: f.action,
+                inputs: Array.from(f.elements).map(el =>
+                    `${el.tagName.toLowerCase()}[${el.type||''}] name=${el.name||''} value=${(el.value||'').slice(0,30)}`)
+            }))
+        """)
+        print(f"    [forms on {label}]", flush=True)
+        for f in info:
+            print(f"      action={f['action']}", flush=True)
+            for i in f['inputs']:
+                print(f"        {i}", flush=True)
+        # Clickable non-form controls (image buttons, JS links) often advance ESP pages
+        links = page.evaluate("""() =>
+            Array.from(document.querySelectorAll('a[onclick], a[href^="javascript"], input[type=image], img[onclick]'))
+                 .map(el => `${el.tagName} text=${(el.innerText||el.alt||'').trim().slice(0,30)} onclick=${(el.getAttribute('onclick')||el.getAttribute('href')||'').slice(0,80)}`)
+        """)
+        for l in links:
+            print(f"      [clickable] {l}", flush=True)
+    except Exception as e:
+        print(f"    [forms dump failed: {e}]", flush=True)
+
+
+def _submit_participants_form(page, label=""):
+    """
+    Advance the book_participants page. Try, in order:
+    1. Click a visible submit/image button (sends the button's name=value, which
+       PHP often requires to progress)
+    2. JS-submit the form containing the gotdata input
+    """
+    # Strategy 1: click a real submit control
+    btn = page.locator(
+        'input[type="submit"]:visible, button[type="submit"]:visible, '
+        'input[type="image"]:visible, '
+        'input[value*="Continue" i], input[value*="Next" i], input[value*="Confirm" i]'
+    ).first
+    try:
+        if btn.count() > 0:
+            btn.click(timeout=5_000, force=True)
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            page.wait_for_timeout(400)
+            print(f"    [{label} via button] → {page.url}", flush=True)
+            return
+    except Exception as e:
+        print(f"    [{label}] button click failed: {str(e)[:120]}", flush=True)
+
+    # Strategy 2: JS submit of the gotdata form (any value)
+    try:
+        page.locator('form:has(input[name="gotdata"])').first.evaluate("f => f.submit()")
+    except Exception as e:
+        print(f"    [{label}] JS submit raised: {str(e)[:120]}", flush=True)
+    page.wait_for_load_state("domcontentloaded", timeout=30_000)
+    page.wait_for_timeout(400)
+    print(f"    [{label} via JS] → {page.url}", flush=True)
+
+
 def _navigate_to_date(page, booking: dict = None):
     print("Navigating to booking …")
     b = booking or BOOKING
@@ -179,19 +238,14 @@ def _navigate_to_date(page, booking: dict = None):
 
     print(f"    [after course select] → {page.url}")
 
-    # 4. On book_participants.php: set player count and submit gotdata=1
+    # 4. On book_participants.php: set player count and progress the form
     players = str(b["players"])
+    _dump_forms(page, "participants page")
     page.select_option('select[name="NumPeople"]', players)
-    # No visible submit button — submit the form programmatically
-    try:
-        page.locator('form:has(input[name="gotdata"][value="1"])').evaluate("f => f.submit()")
-    except Exception:
-        pass  # context destroyed by navigation is expected
-    page.wait_for_load_state("domcontentloaded", timeout=30_000)
-    page.wait_for_timeout(400)
-    print(f"    [NumPeople submit] → {page.url}")
+    page.wait_for_timeout(600)  # NumPeople change may trigger an onchange reload
+    _submit_participants_form(page, "NumPeople submit")
 
-    # 5. If still on participants page, mark extra slots as guests then submit gotdata=2
+    # 5. If still on participants page, mark extra slots as guests then submit again
     if "book_participants" in page.url:
         if int(players) > 1:
             for i in range(1, int(players)):
@@ -202,13 +256,7 @@ def _navigate_to_date(page, booking: dict = None):
                     """)
                 except Exception:
                     pass
-        try:
-            page.locator('form:has(input[name="gotdata"][value="2"])').evaluate("f => f.submit()")
-        except Exception:
-            pass
-        page.wait_for_load_state("domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(400)
-        print(f"    [Participants confirm] → {page.url}")
+        _submit_participants_form(page, "Participants confirm")
     else:
         print(f"    [Participants] already progressed → {page.url}")
 
