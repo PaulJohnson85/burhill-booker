@@ -1,0 +1,250 @@
+{
+  "01/07/2026": {
+    "day": "Wednesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Golf Day 10am to 1pm / New Club Match 11am to 11:40am"
+  },
+  "02/07/2026": {
+    "day": "Thursday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "All Day",
+    "open_play_ends": "23:59",
+    "event": "Old - Golf Day 9am - 6pm / New - Club Stableford All Day"
+  },
+  "03/07/2026": {
+    "day": "Friday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 12:50",
+    "open_play_ends": "12:50",
+    "event": "Old - Golf Day 9am to 5pm / New - Club Match 1pm - 2pm"
+  },
+  "04/07/2026": {
+    "day": "Saturday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "Old - Ladies Club Championships 7:30am to 10:50am & Junior Match 1pm to 1:40pm"
+  },
+  "05/07/2026": {
+    "day": "Sunday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "New - Ladies Club Championship - 7:30am to 11:30am"
+  },
+  "06/07/2026": {
+    "day": "Monday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Vets Stableford 7:30am to 12:50pm"
+  },
+  "07/07/2026": {
+    "day": "Tuesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Ladies Shirley King Trophy 8:00am to 11:30am"
+  },
+  "08/07/2026": {
+    "day": "Wednesday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "New - Club Match 12:30pm to 1:00pm"
+  },
+  "09/07/2026": {
+    "day": "Thursday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Golf Day 7:30am to 2:30pm"
+  },
+  "10/07/2026": {
+    "day": "Friday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 to 12:50",
+    "open_play_ends": "12:50",
+    "event": "Old - Club match 8:30am to 9:30am & 10:30am to 11am / New - Golf Day 11:30am to 1:40pm"
+  },
+  "11/07/2026": {
+    "day": "Saturday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "Old - Club Championships R1 7:30am to 2pm"
+  },
+  "12/07/2026": {
+    "day": "Sunday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "New - Club Championships R2 7:30am to 12:50pm & Junior Stableford 1:00pm to 3:20pm"
+  },
+  "13/07/2026": {
+    "day": "Monday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Mixed Open 7:30am to 10:20am / New - Mixed Open 1:00pm to 3:50pm"
+  },
+  "14/07/2026": {
+    "day": "Tuesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Womens Captain Day 7:30am to 2:20pm"
+  },
+  "15/07/2026": {
+    "day": "Wednesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Club Match 8:30am to 9:30am & Golf Day 9:40am to 6:00pm"
+  },
+  "16/07/2026": {
+    "day": "Thursday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Club Match 8:30am to 9:30am & Golf Day 10:00am to 12:00pm"
+  },
+  "17/07/2026": {
+    "day": "Friday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 12:50pm",
+    "open_play_ends": "12:50",
+    "event": "Old - Golf Day 7:30am to 5:30pm"
+  },
+  "18/07/2026": {
+    "day": "Saturday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "All Day",
+    "open_play_ends": "23:59",
+    "event": "Old - Past Captains 9:00am to 9:40am & Ladies Stableford 10:30am to 11:20am & Club Match 1:00pm to 1:30pm / New - Club Stableford All Day"
+  },
+  "19/07/2026": {
+    "day": "Sunday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "Old - Speed Golf Challenge 7:30am to 9:00am & Club Match 1:00pm to 2:00pm"
+  },
+  "20/07/2026": {
+    "day": "Monday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Robinson Shield 7:30am to 2:00pm"
+  },
+  "21/07/2026": {
+    "day": "Tuesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Ladies Competition 7:30am to 11:50am"
+  },
+  "22/07/2026": {
+    "day": "Wednesday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Club Match 11:30am to 12:30pm / New - Club Match 8:30am to 9:30am"
+  },
+  "23/07/2026": {
+    "day": "Thursday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Golf Day 7:30am to 3:30pm"
+  },
+  "24/07/2026": {
+    "day": "Friday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 12:50",
+    "open_play_ends": "12:50",
+    "event": "-"
+  },
+  "25/07/2026": {
+    "day": "Saturday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "Old - Captain's Prize 7:30am to 1:20pm & Junior Stableford 1:30pm to 3:50pm"
+  },
+  "26/07/2026": {
+    "day": "Sunday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "7:30 - 14:30",
+    "open_play_ends": "14:30",
+    "event": "Old - Club Match 10:30am to 11:00am"
+  },
+  "27/07/2026": {
+    "day": "Monday",
+    "tee_time_course": "-",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "NEW COURSE - MAINTENANCE CLOSED ALL DAY"
+  },
+  "28/07/2026": {
+    "day": "Tuesday",
+    "tee_time_course": "-",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "NEW COURSE - MAINTENANCE CLOSED ALL DAY"
+  },
+  "29/07/2026": {
+    "day": "Wednesday",
+    "tee_time_course": "Old",
+    "open_play_course": "New",
+    "open_play_times": "9:00 - 12:00",
+    "open_play_ends": "12:00",
+    "event": "NEW COURSE - MAINTENANCE CLOSED UNTIL 9AM"
+  },
+  "30/07/2026": {
+    "day": "Thursday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 10:50",
+    "open_play_ends": "10:50",
+    "event": "Old - Golf Day 1:30pm to 2:10pm"
+  },
+  "31/07/2026": {
+    "day": "Friday",
+    "tee_time_course": "New",
+    "open_play_course": "Old",
+    "open_play_times": "7:30 - 12:50",
+    "open_play_ends": "12:50",
+    "event": "Old - Club Match 1:00pm to 1:50pm"
+  }
+}

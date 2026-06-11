@@ -1,0 +1,6 @@
+.env
+bookings.db
+*.png
+booker.log
+__pycache__/
+*.pyc
