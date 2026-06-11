@@ -110,32 +110,117 @@ def verify(page, query: str) -> dict:
     if _participants_state(page).get("curNum") != "2":
         _submit_participants_form(page, "1", "NumPeople submit")
 
-    # Type the name into the member field, tick member search, submit confirm
+    # Type the name into the member field and clear the guest box
     res = page.evaluate("""(q) => {
         const out = [];
         const t = document.querySelector('input[name="BookMemb1"]');
         if (t) { t.value = q; out.push('BookMemb1=' + q); }
-        const ms = document.querySelector('input[name="mschk1"]');
-        if (ms) { ms.checked = true; out.push('mschk1 ticked'); }
         const g = document.querySelector('input[name="BookNonMemb1"]');
         if (g) { g.checked = false; out.push('guest cleared'); }
         return out.join(', ') || 'no member inputs found';
     }""", query)
     _p(f"  [fill] {res}")
-    _submit_participants_form(page, "2", "Member search submit")
 
-    # A successful search triggers a delayed navigation — let it settle fully
-    page.wait_for_timeout(2500)
+    # mschk1 is not a form flag — on the real site it's the control that opens
+    # the member search UI via JS. Inspect it, then really click it.
+    info = page.evaluate("""() => {
+        const ms = document.querySelector('input[name="mschk1"]');
+        const out = {outer: ms ? ms.outerHTML.slice(0, 300) : null, handlers: []};
+        if (ms) {
+            for (const a of ['onclick', 'onchange', 'onmouseup']) {
+                const v = ms.getAttribute(a);
+                if (v) out.handlers.push(a + '=' + v.slice(0, 150));
+            }
+        }
+        return out;
+    }""")
+    _p(f"  [mschk1] {json.dumps(info)}")
+
+    popup = None
     try:
-        page.wait_for_load_state("domcontentloaded", timeout=15_000)
-        page.wait_for_load_state("networkidle", timeout=10_000)
+        with page.expect_popup(timeout=5_000) as pop_info:
+            page.locator('input[name="mschk1"]').click(force=True)
+        popup = pop_info.value
+        _p(f"  [popup opened] {popup.url}")
+    except Exception:
+        _p("  [no popup window after mschk1 click]")
+
+    target = popup if popup is not None else page
+    try:
+        target.wait_for_load_state("domcontentloaded", timeout=15_000)
     except Exception:
         pass
-    page.wait_for_timeout(500)
-    _p(f"  [after search settled] → {page.url}")
-    _dump_forms(page, "after member search")
-    captured = _capture_matches(page, query)
+    target.wait_for_timeout(1500)
+    _p(f"  [search UI] url={target.url}")
+    _p(f"  [frames] {[f.url for f in target.frames]}")
+    _dump_forms(target, "member search UI")
+
+    # If the search UI (popup or an iframe) has its own search box, run the
+    # search: fill the first text input and submit its form / press Enter.
+    contexts = [target.main_frame] + list(target.frames[1:]) if popup else list(page.frames)
+    for frame in contexts:
+        try:
+            ran = frame.evaluate("""(q) => {
+                const boxes = Array.from(document.querySelectorAll('input[type=text]'))
+                    .filter(i => !/^BookMemb/.test(i.name || ''));
+                if (!boxes.length) return 'no-box';
+                const box = boxes[0];
+                box.value = q;
+                const form = box.form;
+                if (form) {
+                    const btn = Array.from(form.elements).find(el =>
+                        el.type === 'submit' || el.type === 'image' || el.type === 'button');
+                    if (btn) { btn.click(); return 'searched via button ' + (btn.value || btn.name || '?'); }
+                    form.submit();
+                    return 'searched via form.submit';
+                }
+                box.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+                return 'searched via Enter';
+            }""", query)
+            if ran != "no-box":
+                _p(f"  [search ran in {frame.url}] {ran}")
+                break
+        except Exception as e:
+            _p(f"  [frame search failed {frame.url}] {str(e)[:80]}")
+
+    target.wait_for_timeout(2500)
+    try:
+        target.wait_for_load_state("domcontentloaded", timeout=10_000)
+    except Exception:
+        pass
+    _p(f"  [after search] url={target.url} frames={[f.url for f in target.frames]}")
+    _dump_forms(target, "after member search")
+
+    # Capture from the popup/page and all its frames
+    captured = _capture_matches(target, query)
+    for frame in target.frames[1:]:
+        try:
+            sub = frame.evaluate("""(q) => {
+                const out = {options: [], links: [], body: ''};
+                for (const sel of Array.from(document.querySelectorAll('select')))
+                    for (const o of Array.from(sel.options || []))
+                        if (o.text) out.options.push(o.text.trim());
+                for (const a of Array.from(document.querySelectorAll('a, td[onclick], tr[onclick], button')))
+                    if (((a.innerText || '').trim())) out.links.push(a.innerText.trim().slice(0, 80));
+                out.body = ((document.body && document.body.innerText) || '').trim().slice(0, 600);
+                return out;
+            }""", query)
+            _p(f"  [frame capture {frame.url}] {json.dumps(sub)[:1000]}")
+            captured["clickables"].extend(
+                l for l in sub["links"] if query.lower() in l.lower())
+            captured["selects"].extend(
+                [{"name": "frame", "options": [{"text": t, "value": ""}]}
+                 for t in sub["options"] if query.lower() in t.lower()])
+            if not captured.get("body"):
+                captured["body"] = sub["body"]
+        except Exception:
+            continue
     _p(f"  [captured] {json.dumps(captured)[:1500]}")
+    if popup is not None:
+        try:
+            popup.close()
+        except Exception:
+            pass
 
     # Distil a friendly match list: select options or clickable names
     matches = []
