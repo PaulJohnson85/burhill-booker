@@ -218,20 +218,35 @@ def _navigate_to_date(page, booking: dict = None):
     target_day = b["date"].split("/")[0].lstrip("0")  # "16/06/2026" → "16"
     target_day_padded = b["date"].split("/")[0]        # "16" (already 2 digits)
 
-    # Dates are <td> cells in a calendar table — find by exact text match
-    # Try padded ("15") and unpadded ("15") — both are the same for days >= 10
+    # Dates are <td> cells in a calendar table — match cell text allowing
+    # surrounding whitespace/newlines (exact ^16$ fails because cells contain "\n 16 \n")
     date_locator = None
-    for candidate in [target_day_padded, target_day]:
-        loc = page.locator(f'td').filter(has_text=re.compile(f'^{candidate}$'))
+    candidates = []
+    seen = set()
+    for c in [target_day_padded, target_day]:
+        if c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    for candidate in candidates:
+        loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
         if loc.count() > 0:
             date_locator = loc.first
-            print(f"    Found date cell '{candidate}' ({loc.count()} matches)")
+            print(f"    Found date cell '{candidate}' ({loc.count()} matches)", flush=True)
             break
 
     if date_locator is None:
-        # Log what's in the calendar for debugging
-        tds = page.locator('table td').all()
-        print(f"    Calendar tds: {[td.inner_text().strip() for td in tds[:30]]}")
+        # Fall back to a clickable element (a/td with onclick) containing the day number
+        loc = page.locator(f'td[onclick], a').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
+        if loc.count() > 0:
+            date_locator = loc.first
+            print(f"    Found date via fallback selector ({loc.count()} matches)", flush=True)
+
+    if date_locator is None:
+        # Log what's actually on the page for debugging
+        print(f"    [date_not_found] url={page.url}", flush=True)
+        tds = page.locator('td').all()
+        print(f"    Calendar tds ({len(tds)}): {[td.inner_text().strip()[:20] for td in tds[:40]]}", flush=True)
         page.screenshot(path="date_not_found.png")
         raise RuntimeError(f"Date {target_day} not found in calendar — is the booking window open?")
 
