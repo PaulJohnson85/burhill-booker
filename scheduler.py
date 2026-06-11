@@ -99,18 +99,28 @@ def _add_job(booking_id: int, fire_at: datetime):
 def _run_booking_subprocess(booking_id: int):
     db.update_status(booking_id, "running", message="Starting booking process …")
     script = os.path.join(os.path.dirname(__file__), "run_booking.py")
-    result = subprocess.run(
-        [sys.executable, script, "--booking-id", str(booking_id)],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, script, "--booking-id", str(booking_id)],
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10-minute hard limit
+        )
+    except subprocess.TimeoutExpired:
+        db.update_status(booking_id, "failed",
+                         message="Booking subprocess timed out after 10 minutes")
+        return
+
     if result.stdout:
-        print(f"[booking {booking_id} stdout]\n{result.stdout}")
+        print(f"[booking {booking_id} stdout]\n{result.stdout}", flush=True)
     if result.stderr:
         print(f"[booking {booking_id} stderr]\n{result.stderr}", flush=True)
+
     if result.returncode != 0:
         row = db.get_booking(booking_id)
         if row and row["status"] not in ("failed", "booked"):
-            # Combine stdout + stderr, take last 2000 chars so HTML dump is visible
-            combined = (result.stdout or "") + "\n" + (result.stderr or "")
-            db.update_status(booking_id, "failed", message=combined.strip()[-2000:])
+            combined = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+            # Pass None when combined is empty — COALESCE keeps the last meaningful message
+            msg = combined[-2000:] if combined else None
+            db.update_status(booking_id, "failed",
+                             message=msg or f"Process exited {result.returncode} with no output")
