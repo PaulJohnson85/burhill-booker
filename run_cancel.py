@@ -82,6 +82,12 @@ def _cancel_on_site(page, booking) -> bool:
     date_str  = booking["date"]            # DD/MM/YYYY
     slot_time = booking.get("slot_time")   # HH:MM or None
 
+    # The Cancel button pops a JS confirm() dialog — Playwright dismisses
+    # dialogs by default, which silently aborts the submit. Accept them.
+    page.on("dialog", lambda dialog: (
+        _p(f"  [dialog: {dialog.type} '{dialog.message[:80]}' — accepting]"),
+        dialog.accept()))
+
     # 1. Open booking history
     page.goto(f"{BASE_URL}/book_history.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
