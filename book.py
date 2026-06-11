@@ -483,10 +483,33 @@ def _book_slot(page, slot_url: str) -> bool:
 
         if "book_confirm" in cur:
             print("  On confirmation page — clicking Make Booking inside iframe …")
-            # The final Make Booking button is inside wp_cybersource/el_userdetails.php iframe
-            iframe = page.frame_locator('iframe[src*="el_userdetails"]')
-            make_btn = iframe.locator('input[value*="Make Booking" i], button:has-text("Make Booking"), input[type="submit"]').first
-            make_btn.click(timeout=30_000)
+            # The final Make Booking button lives in the wp_cybersource/el_userdetails
+            # iframe, but its load timing/URL varies — poll every frame for it.
+            # NB: the main frame also has a side-menu "Make Booking" (book_start)
+            # button, so only search child frames.
+            clicked = None
+            deadline = time.time() + 45
+            while clicked is None and time.time() < deadline:
+                for frame in page.frames[1:]:
+                    try:
+                        loc = frame.locator(
+                            'input[value*="Make Booking" i], '
+                            'button:has-text("Make Booking"), '
+                            'input[type="submit"]').first
+                        if loc.count() > 0:
+                            loc.click(timeout=5_000, force=True)
+                            clicked = frame.url
+                            break
+                    except Exception:
+                        continue
+                if clicked is None:
+                    page.wait_for_timeout(1000)
+            if clicked is None:
+                print(f"    [book_confirm] frames: {[f.url for f in page.frames]}", flush=True)
+                _dump_forms(page, "book_confirm page")
+                page.screenshot(path="book_confirm_timeout.png")
+                raise RuntimeError("Make Booking button not found in any frame on book_confirm.php")
+            print(f"    [book_confirm clicked in frame {clicked}]", flush=True)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"    [book_confirm submitted] → {page.url}")
