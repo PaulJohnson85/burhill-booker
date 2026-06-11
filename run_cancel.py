@@ -23,91 +23,109 @@ def _p(msg):
     print(msg, flush=True)
 
 
-def _date_variants(date_str: str):
-    """ '16/06/2026' → ['16/06/2026', '16/06/26', '16%2F06%2F26', '16%2F06%2F2026'] """
+def _read_history_forms(page):
+    """Return each form on book_history.php as a dict of its named element values."""
+    return page.evaluate("""() =>
+        Array.from(document.forms).map(f => {
+            const els = {};
+            for (const el of Array.from(f.elements)) {
+                if (el.name) els[el.name] = el.value;
+            }
+            return {action: f.action || '', els: els};
+        })
+    """)
+
+
+def _find_cancel_ref(forms, date_str, slot_time):
+    """
+    book_history.php has, per booking:
+      - a rebook form: hidden payload (base64 JSON incl. HistDate) + rebookref
+      - a cancel form: hidden ref + cancel=1
+    Decode the payloads, match the booking date (and slot time when present),
+    return the matching ref.
+    """
+    import base64, json
     d, m, y = date_str.split("/")
-    return [
-        f"{d}/{m}/{y}", f"{d}/{m}/{y[2:]}",
-        f"{d}%2F{m}%2F{y[2:]}", f"{d}%2F{m}%2F{y}",
-    ]
+    date_keys = [f"{d}/{m}/{y}", f"{d}/{m}/{y[2:]}"]
+
+    candidates = []
+    for f in forms:
+        els = f["els"]
+        payload = els.get("payload")
+        ref = els.get("rebookref") or els.get("ref")
+        if not payload or not ref:
+            continue
+        try:
+            pad = payload + "=" * (-len(payload) % 4)
+            decoded = base64.b64decode(pad).decode("utf-8", "replace").replace("\\/", "/")
+        except Exception as e:
+            _p(f"    [payload decode failed for ref {ref}: {e}]")
+            continue
+        _p(f"    [history entry ref={ref}] {decoded[:200]}")
+        if any(k in decoded for k in date_keys):
+            score = 1
+            if slot_time and slot_time in decoded:
+                score = 2
+            candidates.append((score, ref, decoded))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    if slot_time and candidates[0][0] == 1 and len(candidates) > 1:
+        _p(f"  ⚠️  Multiple bookings on {date_str}, none matched time {slot_time} exactly "
+           f"— using first")
+    return candidates[0][1]
 
 
 def _cancel_on_site(page, booking) -> bool:
     """Find the booking in Booking History and cancel it. Returns True on success."""
     date_str  = booking["date"]            # DD/MM/YYYY
     slot_time = booking.get("slot_time")   # HH:MM or None
-    variants  = _date_variants(date_str)
 
     # 1. Open booking history
     page.goto(f"{BASE_URL}/book_history.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
     _p(f"  [book_history] → {page.url}")
-
-    # Log all links so we can see the page structure
-    links = page.evaluate("""() =>
-        Array.from(document.querySelectorAll('a')).map(a =>
-            ({href: a.getAttribute('href') || '', text: (a.innerText || '').trim().slice(0, 60)}))
-    """)
-    for l in links:
-        if l["href"]:
-            _p(f"    [history link] text='{l['text']}' href={l['href'][:120]}")
     _dump_forms(page, "book_history page")
 
-    # 2. Find the cancel link for this booking.
-    #    Prefer a book_cancel link whose href mentions the booking's date
-    #    (and slot time if we have one); fall back to any single cancel link.
-    cancel_links = [l for l in links if "cancel" in l["href"].lower()
-                    or "cancel" in l["text"].lower()]
-    _p(f"  Found {len(cancel_links)} cancel link(s)")
-
-    def matches_booking(l):
-        target = (l["href"] + " " + l["text"])
-        if not any(v in target for v in variants):
-            return False
-        if slot_time:
-            t_enc = slot_time.replace(":", "%3A")
-            if slot_time not in target and t_enc not in target:
-                return False
-        return True
-
-    chosen = next((l for l in cancel_links if matches_booking(l)), None)
-    if chosen is None and len(cancel_links) == 1:
-        _p("  No date-matched link — using the only cancel link on the page")
-        chosen = cancel_links[0]
-    if chosen is None:
-        # Maybe cancellation lives behind a per-booking detail link — try those
-        detail = [l for l in links
-                  if any(v in l["href"] for v in variants)]
-        if detail:
-            href = detail[0]["href"]
-            if not href.startswith("http"):
-                href = f"{BASE_URL}/{href.lstrip('/')}"
-            _p(f"  Opening booking detail: {href[:120]}")
-            page.goto(href, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(800)
-            links2 = page.evaluate("""() =>
-                Array.from(document.querySelectorAll('a')).map(a =>
-                    ({href: a.getAttribute('href') || '', text: (a.innerText || '').trim().slice(0, 60)}))
-            """)
-            for l in links2:
-                if l["href"]:
-                    _p(f"    [detail link] text='{l['text']}' href={l['href'][:120]}")
-            _dump_forms(page, "booking detail page")
-            chosen = next((l for l in links2 if "cancel" in l["href"].lower()
-                           or "cancel" in l["text"].lower()), None)
-
-    if chosen is None:
+    # 2. Cancellation is form-based: find the booking's ref via the rebook
+    #    payload (base64 JSON containing HistDate), then submit the form
+    #    that has ref=<ref> and cancel=1.
+    forms = _read_history_forms(page)
+    ref = _find_cancel_ref(forms, date_str, slot_time)
+    if ref is None:
         page.screenshot(path="cancel_not_found.png")
-        raise RuntimeError(f"No cancel link found for booking on {date_str}"
+        raise RuntimeError(f"No history entry found for booking on {date_str}"
                            f"{' at ' + slot_time if slot_time else ''}")
+    _p(f"  Booking ref: {ref}")
 
-    href = chosen["href"]
-    if not href.startswith("http"):
-        href = f"{BASE_URL}/{href.lstrip('/')}"
-    _p(f"  Cancel link: {href[:150]}")
-    page.goto(href, wait_until="domcontentloaded", timeout=30_000)
+    try:
+        how = page.evaluate("""(ref) => {
+            const form = Array.from(document.forms).find(f => {
+                let r = null, cancel = false;
+                for (const el of Array.from(f.elements)) {
+                    if (el.name === 'ref') r = el.value;
+                    if (el.name === 'cancel') cancel = true;
+                }
+                return cancel && r === ref;
+            });
+            if (!form) return 'no-cancel-form';
+            const btn = Array.from(form.elements).find(el =>
+                el.type === 'submit' || el.type === 'image');
+            if (btn) { btn.click(); return 'clicked'; }
+            form.submit();
+            return 'js-submit';
+        }""", ref)
+        _p(f"  [cancel form submit: {how}]")
+        if how == "no-cancel-form":
+            raise RuntimeError(f"No cancel form found for ref {ref}")
+    except Exception as e:
+        if "no-cancel-form" in str(e):
+            raise
+        _p(f"  [cancel submit] evaluate raised (navigation): {str(e)[:80]}")
+    page.wait_for_load_state("domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
-    _p(f"  [after cancel link] → {page.url}")
+    _p(f"  [after cancel submit] → {page.url}")
 
     # 3. The cancel page usually asks for confirmation — submit its own form
     #    (filtering out the side-menu forms), for up to 3 steps.
@@ -149,17 +167,18 @@ def _cancel_on_site(page, booking) -> bool:
         page.wait_for_timeout(800)
         _p(f"  [after confirm step {step}] → {page.url}")
 
-    # 4. Verify: reload history and check the booking is gone
+    # 4. Verify: reload history and check the cancel form for this ref is gone
     page.goto(f"{BASE_URL}/book_history.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
-    content = page.content()
-    still_there = any(v in content for v in variants[:2]) and (
-        not slot_time or slot_time in content)
+    forms_after = _read_history_forms(page)
+    still_there = any(
+        f["els"].get("cancel") and (f["els"].get("ref") == ref)
+        for f in forms_after)
     if still_there:
-        _p("  ⚠️  Booking still appears in history — cancel may not have completed")
+        _p(f"  ⚠️  Cancel form for ref {ref} still present — cancel may not have completed")
         page.screenshot(path="cancel_unverified.png")
         return False
-    _p("  ✅ Booking no longer in history — cancelled.")
+    _p(f"  ✅ Ref {ref} no longer cancellable in history — cancelled.")
     return True
 
 
