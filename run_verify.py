@@ -124,7 +124,15 @@ def verify(page, query: str) -> dict:
     _p(f"  [fill] {res}")
     _submit_participants_form(page, "2", "Member search submit")
 
-    _p(f"  [after search] → {page.url}")
+    # A successful search triggers a delayed navigation — let it settle fully
+    page.wait_for_timeout(2500)
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=15_000)
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception:
+        pass
+    page.wait_for_timeout(500)
+    _p(f"  [after search settled] → {page.url}")
     _dump_forms(page, "after member search")
     captured = _capture_matches(page, query)
     _p(f"  [captured] {json.dumps(captured)[:1500]}")
@@ -139,6 +147,19 @@ def verify(page, query: str) -> dict:
     for i in captured["inputs"]:
         if i["name"].startswith("BookMembName") and i["value"] not in matches:
             matches.append(i["value"])
+
+    # If the site accepted the name and moved on (e.g. to the calendar),
+    # extract resolved members ("CODE - Name" lines) from the page
+    if not matches and "book_participants" not in page.url:
+        import re as _re
+        for m in _re.finditer(r"\b[A-Z]{3,8}\d{1,3}\s*-\s*[A-Za-z'\- ]{3,40}",
+                              captured.get("body", "")):
+            t = m.group(0).strip()
+            if t not in matches:
+                matches.append(t)
+        if not matches:
+            matches.append(f"'{query}' — accepted by Burhill")
+        _p(f"  [accepted] search moved to {page.url}")
 
     return {
         "url": page.url,
