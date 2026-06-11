@@ -16,9 +16,8 @@ COPY . .
 RUN mkdir -p open_play_data
 
 ENV HEADLESS=1
-ENV PORT=8080
 ENV TZ=Europe/London
 
-EXPOSE 8080
+EXPOSE $PORT
 
 CMD ["python3", "app.py"]
