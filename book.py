@@ -146,7 +146,8 @@ def _navigate_to_date(page, booking: dict = None):
 
     def click_and_wait(locator, label=""):
         try:
-            locator.click(timeout=30_000)
+            # force=True bypasses visibility checks — handles off-screen/hidden elements
+            locator.click(timeout=30_000, force=True)
         except Exception as e:
             page.screenshot(path=f"timeout_{label.replace(' ','_')}.png")
             print(f"    [TIMEOUT on '{label}'] page={page.url}")
@@ -283,7 +284,7 @@ def _book_slot(page, slot_url: str) -> bool:
         if "questionnaire" in cur:
             print("  Submitting questionnaire (declining extras) …")
             btn = page.locator('input[type="submit"], button[type="submit"]').first
-            btn.click()
+            btn.click(force=True)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(600)
             print(f"    [questionnaire] → {page.url}")
@@ -295,7 +296,7 @@ def _book_slot(page, slot_url: str) -> bool:
                 'input[value*="Confirm" i], input[value*="Book" i], '
                 'input[type="submit"], button[type="submit"]'
             ).first
-            btn.click()
+            btn.click(force=True)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"    [book_confirm submitted] → {page.url}")
@@ -309,7 +310,7 @@ def _book_slot(page, slot_url: str) -> bool:
         ).first
         if btn.count() > 0:
             print(f"  Clicking confirm button …")
-            btn.click()
+            btn.click(force=True)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"  Post-confirm page: {page.url}")
