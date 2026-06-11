@@ -140,42 +140,38 @@ def _cancel_on_site(page, booking) -> bool:
         _p(f"  [response text] {body}")
     except Exception:
         pass
-    _dump_forms(page, "after cancel submit")
-    for step in range(2):
-        try:
-            how = page.evaluate("""(ref) => {
-                const menu = ['home.php','logout.php','book_start','book_back',
-                              'book_basket_view','player_details',
-                              'player_changepassword','player_attachments','club_details'];
-                // A confirm form: not a side-menu form, not a rebook form, and
-                // either references our ref or has a confirm-ish button.
-                for (const f of Array.from(document.forms)) {
-                    if (menu.some(m => (f.action || '').includes(m))) continue;
-                    const els = {};
-                    for (const el of Array.from(f.elements)) if (el.name) els[el.name] = el.value;
-                    if (els['rebook']) continue;
-                    const isOurs = els['ref'] === ref;
-                    const btn = Array.from(f.elements).find(el =>
-                        (el.type === 'submit' || el.type === 'image') &&
-                        /confirm|yes|cancel/i.test(el.value || el.name || ''));
-                    if (isOurs && els['cancel']) continue;  // that's the original cancel form again
-                    if (isOurs || btn) {
-                        const b = btn || Array.from(f.elements).find(el =>
-                            el.type === 'submit' || el.type === 'image');
-                        if (b) { b.click(); return 'clicked:' + (b.value || b.name || '?'); }
-                        f.submit(); return 'js-submit';
-                    }
-                }
-                return 'no-confirm-form';
-            }""", ref)
-            _p(f"  [confirm step {step}: {how}]")
-            if how == "no-confirm-form":
-                break
-        except Exception as e:
-            _p(f"  [confirm step {step}] evaluate raised (navigation): {str(e)[:80]}")
-        page.wait_for_load_state("domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(800)
-        _p(f"  [after confirm step {step}] → {page.url}")
+    # The response shows a "Do you want to cancel this booking? … Yes / No"
+    # overlay whose Yes is a button/link, not a form submit. Click "Yes".
+    try:
+        how = page.evaluate("""() => {
+            const els = Array.from(document.querySelectorAll(
+                'button, a, input[type=button], input[type=submit], span[onclick], div[onclick]'));
+            const yes = els.find(el =>
+                ((el.innerText || el.value || '').trim().toLowerCase() === 'yes'));
+            if (!yes) return 'no-yes-control';
+            yes.click();
+            return 'clicked-yes:' + yes.tagName + (yes.getAttribute('onclick') ?
+                ' onclick=' + yes.getAttribute('onclick').slice(0, 80) : '');
+        }""")
+        _p(f"  [confirm Yes: {how}]")
+        if how == "no-yes-control":
+            # Log clickable candidates for debugging
+            cands = page.evaluate("""() =>
+                Array.from(document.querySelectorAll('button, a, input[type=button], [onclick]'))
+                    .map(el => `${el.tagName} text='${(el.innerText || el.value || '').trim().slice(0,30)}'`)
+                    .slice(0, 40)
+            """)
+            _p(f"  [clickables] {cands}")
+    except Exception as e:
+        _p(f"  [confirm Yes] evaluate raised (navigation): {str(e)[:80]}")
+    page.wait_for_load_state("domcontentloaded", timeout=30_000)
+    page.wait_for_timeout(1200)
+    _p(f"  [after Yes] → {page.url}")
+    try:
+        body = page.evaluate("() => document.body.innerText.trim().slice(0, 400)")
+        _p(f"  [post-Yes text] {body}")
+    except Exception:
+        pass
 
     # 3. The cancel page usually asks for confirmation — submit its own form
     #    (filtering out the side-menu forms), for up to 3 steps.
