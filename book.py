@@ -448,8 +448,28 @@ def _book_slot(page, slot_url: str) -> bool:
 
         if "questionnaire" in cur:
             print("  Submitting questionnaire (declining extras) …")
-            btn = page.locator('input[type="submit"], button[type="submit"]').first
-            btn.click(force=True)
+            _dump_forms(page, "questionnaire page")
+            # The page is full of side-menu forms (Home, Logout, …) whose submit
+            # buttons match .first — pick the questionnaire's own form instead.
+            try:
+                how = page.evaluate("""() => {
+                    const menu = ['home.php','logout.php','book_start','book_back',
+                                  'book_history','book_basket_view','player_details',
+                                  'player_changepassword','player_attachments','club_details'];
+                    const forms = Array.from(document.forms).filter(f =>
+                        !menu.some(m => (f.action || '').includes(m)));
+                    // Prefer the form that posts onward (confirm/questionnaire)
+                    const form = forms.find(f => (f.action || '').includes('book_')) || forms[0];
+                    if (!form) return 'no-form';
+                    const btn = Array.from(form.elements).find(el =>
+                        el.type === 'submit' || el.type === 'image');
+                    if (btn) { btn.click(); return 'clicked-button:' + (btn.value || btn.name); }
+                    form.submit();
+                    return 'js-submit';
+                }""")
+                print(f"    [questionnaire submit: {how}]", flush=True)
+            except Exception as e:
+                print(f"    [questionnaire] evaluate raised (navigation): {str(e)[:80]}", flush=True)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(600)
             print(f"    [questionnaire] → {page.url}")
