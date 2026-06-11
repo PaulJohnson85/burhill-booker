@@ -13,6 +13,7 @@ from datetime import datetime
 
 import db
 import notify
+import crypto
 from book import _login, _navigate_to_date, _find_slot, _book_slot
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
@@ -30,6 +31,18 @@ def run(booking_id: int, dry_run: bool = False):
         "preferred_time":    row["preferred_time"],
         "lead_time_minutes": 2,
     }
+
+    # Load per-user Burhill credentials if this booking belongs to a user
+    if row.get("user_id"):
+        user = db.get_user_by_id(row["user_id"])
+        if user and user.get("burhill_user") and user.get("burhill_pass"):
+            import os
+            os.environ["BURHILL_USERNAME"] = user["burhill_user"]
+            os.environ["BURHILL_PASSWORD"] = crypto.decrypt(user["burhill_pass"])
+            # Force config to re-read the updated env vars
+            from config import CREDENTIALS
+            CREDENTIALS["username"] = user["burhill_user"]
+            CREDENTIALS["password"] = crypto.decrypt(user["burhill_pass"])
 
     db.update_status(booking_id, "running", message="Browser launched …")
 

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Burhill Booker — Create Account</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body { background: #0f1f0f; }</style>
+</head>
+<body class="min-h-screen flex items-center justify-center text-gray-100 font-sans px-4 py-10">
+  <div class="w-full max-w-md">
+
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">⛳</div>
+      <h1 class="text-2xl font-bold text-white">Burhill Booker</h1>
+      <p class="text-green-400 text-sm mt-1">Automated Tee Time Reservations</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="mb-4 px-4 py-3 rounded-xl text-sm
+          {% if cat == 'error' %}bg-red-900/60 border border-red-700 text-red-200
+          {% else %}bg-green-900/60 border border-green-700 text-green-200{% endif %}">
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1)"
+         class="rounded-2xl p-8">
+      <h2 class="text-lg font-semibold text-white mb-6">Create your account</h2>
+      <form method="post">
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Your Name</label>
+          <input type="text" name="name" required
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+            placeholder="Paul Johnson">
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Email</label>
+          <input type="email" name="email" required autocomplete="email"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+        </div>
+
+        <div class="mb-6">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+            Password <span class="text-gray-500 normal-case font-normal">(min 8 characters — for this portal)</span>
+          </label>
+          <input type="password" name="password" required minlength="8"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+        </div>
+
+        <!-- Divider -->
+        <div class="flex items-center gap-3 mb-5">
+          <div class="flex-1 h-px bg-white/10"></div>
+          <span class="text-xs text-gray-500 uppercase tracking-wider">Burhill Golf Credentials</span>
+          <div class="flex-1 h-px bg-white/10"></div>
+        </div>
+        <p class="text-xs text-gray-400 mb-4">
+          Your Burhill members login — used to book tee times on your behalf.
+          Stored encrypted and never shared.
+        </p>
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Burhill Username</label>
+          <input type="text" name="burhill_user" required autocomplete="off"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+            placeholder="e.g. PaulJohnson1">
+        </div>
+
+        <div class="mb-7">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Burhill Password</label>
+          <input type="password" name="burhill_pass" required autocomplete="new-password"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+        </div>
+
+        <button type="submit"
+          class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition">
+          Create Account
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-gray-400 text-sm mt-6">
+      Already have an account?
+      <a href="{{ url_for('login') }}" class="text-green-400 hover:text-green-300 font-semibold">Sign in</a>
+    </p>
+  </div>
+</body>
+</html>

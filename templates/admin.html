@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Burhill Booker — Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f1f0f; }
+    .glass { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+  </style>
+</head>
+<body class="min-h-screen text-gray-100 font-sans">
+
+  <header class="border-b border-white/10 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">⛳</span>
+      <div>
+        <h1 class="text-xl font-bold text-white">Burhill Booker</h1>
+        <p class="text-xs text-red-400">Admin Panel</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('index') }}" class="text-sm text-gray-400 hover:text-white transition">← Dashboard</a>
+      <a href="{{ url_for('logout') }}" class="text-sm text-gray-400 hover:text-white border border-white/10 px-3 py-1.5 rounded-lg transition">Sign out</a>
+    </div>
+  </header>
+
+  <main class="px-6 py-8">
+
+    <!-- Users -->
+    <h2 class="text-lg font-bold text-white mb-4">Users <span class="text-gray-500 font-normal text-sm">({{ users|length }})</span></h2>
+    <div class="glass rounded-2xl overflow-hidden mb-10">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/10 text-gray-400 text-xs uppercase tracking-wider">
+            <th class="text-left px-5 py-3">Name</th>
+            <th class="text-left px-5 py-3">Email</th>
+            <th class="text-left px-5 py-3">Joined</th>
+            <th class="text-left px-5 py-3">Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr class="border-b border-white/5 hover:bg-white/5 transition">
+            <td class="px-5 py-3 font-semibold text-white">{{ u.name }}</td>
+            <td class="px-5 py-3 text-gray-300">{{ u.email }}</td>
+            <td class="px-5 py-3 text-gray-400 text-xs">{{ u.created_at[:10] }}</td>
+            <td class="px-5 py-3">
+              {% if u.is_admin %}
+                <span class="bg-red-900/50 text-red-300 border border-red-700 text-xs px-2 py-0.5 rounded-full">Admin</span>
+              {% else %}
+                <span class="bg-gray-800 text-gray-400 text-xs px-2 py-0.5 rounded-full">Member</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- All Bookings -->
+    <h2 class="text-lg font-bold text-white mb-4">All Bookings <span class="text-gray-500 font-normal text-sm">({{ bookings|length }})</span></h2>
+    <div class="glass rounded-2xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/10 text-gray-400 text-xs uppercase tracking-wider">
+            <th class="text-left px-5 py-3">User</th>
+            <th class="text-left px-5 py-3">Date</th>
+            <th class="text-left px-5 py-3">Time</th>
+            <th class="text-left px-5 py-3">Course</th>
+            <th class="text-left px-5 py-3">Players</th>
+            <th class="text-left px-5 py-3">Status</th>
+            <th class="text-left px-5 py-3">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr class="border-b border-white/5 hover:bg-white/5 transition">
+            <td class="px-5 py-3 text-gray-300">{{ b.user_name or '—' }}</td>
+            <td class="px-5 py-3 font-semibold text-white">{{ b.date }}</td>
+            <td class="px-5 py-3 text-gray-200">
+              {{ b.preferred_time }}
+              {% if b.slot_time and b.slot_time != b.preferred_time %}
+                <span class="text-xs text-gray-400">→ {{ b.slot_time }}</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-gray-200">{{ 'Any' if b.course == 'Golf' else b.course }}</td>
+            <td class="px-5 py-3 text-gray-200">{{ b.players }}</td>
+            <td class="px-5 py-3">
+              {% set s = b.status %}
+              {% if s == 'booked' %}<span class="text-green-400">✅ Booked</span>
+              {% elif s == 'running' %}<span class="text-yellow-400">⏳ Running</span>
+              {% elif s == 'waiting' %}<span class="text-blue-400">🔵 Waiting</span>
+              {% elif s == 'failed' %}<span class="text-red-400">❌ Failed</span>
+              {% elif s == 'cancelled' %}<span class="text-gray-500">Cancelled</span>
+              {% else %}<span class="text-gray-400">{{ s }}</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-3 text-xs text-gray-400 max-w-xs truncate">{{ b.message or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>
