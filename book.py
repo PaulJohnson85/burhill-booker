@@ -379,6 +379,9 @@ def _book_slot(page, slot_url: str) -> bool:
     Raises RuntimeError if something goes wrong mid-flow.
     """
     print("Booking slot …")
+    # Slot hrefs are relative ("book_date.php?gotdata=2&…") — make absolute
+    if not slot_url.startswith("http"):
+        slot_url = f"{BASE_URL}/{slot_url.lstrip('/')}"
     page.goto(slot_url, wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
     print(f"  Slot page: {page.url}")
