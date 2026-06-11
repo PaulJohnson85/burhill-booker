@@ -266,6 +266,13 @@ def _navigate_to_date(page, booking: dict = None):
         _dump_forms(page, "participants page before confirm")
         # gotdata=2 form is the actual confirm (has the SUBMIT button)
         _submit_participants_form(page, "2", "Participants confirm")
+        # The click starts a navigation to book_date.php — wait for it to land
+        try:
+            page.wait_for_url(lambda url: "book_participants" not in url, timeout=20_000)
+        except Exception:
+            print(f"    [Participants confirm] still on {page.url} after 20s", flush=True)
+        page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(800)
     else:
         print(f"    [Participants] already progressed → {page.url}")
 
@@ -285,19 +292,34 @@ def _navigate_to_date(page, booking: dict = None):
             seen.add(c)
             candidates.append(c)
 
-    for candidate in candidates:
-        loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
-        if loc.count() > 0:
-            date_locator = loc.first
-            print(f"    Found date cell '{candidate}' ({loc.count()} matches)", flush=True)
-            break
-
-    if date_locator is None:
-        # Fall back to a clickable element (a/td with onclick) containing the day number
-        loc = page.locator(f'td[onclick], a').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
-        if loc.count() > 0:
-            date_locator = loc.first
-            print(f"    Found date via fallback selector ({loc.count()} matches)", flush=True)
+    # Poll for up to 15s — the calendar may still be rendering after navigation
+    deadline = time.time() + 15
+    while date_locator is None and time.time() < deadline:
+        for candidate in candidates:
+            loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
+            if loc.count() > 0:
+                date_locator = loc.first
+                print(f"    Found date cell '{candidate}' ({loc.count()} matches)", flush=True)
+                break
+        if date_locator is None:
+            # Fallback: clickable element (a/td with onclick) containing the day number
+            loc = page.locator('td[onclick], a').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
+            if loc.count() > 0:
+                date_locator = loc.first
+                print(f"    Found date via fallback selector ({loc.count()} matches)", flush=True)
+        if date_locator is None:
+            # The calendar may be inside an iframe
+            for frame in page.frames[1:]:
+                try:
+                    loc = frame.locator('td').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
+                    if loc.count() > 0:
+                        date_locator = loc.first
+                        print(f"    Found date cell in iframe {frame.url} ({loc.count()} matches)", flush=True)
+                        break
+                except Exception:
+                    continue
+        if date_locator is None:
+            page.wait_for_timeout(1000)
 
     if date_locator is None:
         # Log what's actually on the page for debugging
