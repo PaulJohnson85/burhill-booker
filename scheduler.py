@@ -53,6 +53,21 @@ def init_scheduler():
             fire_at  = _fire_time(opens_at)
             _add_job(booking["id"], fire_at)
 
+    # Daily housekeeping: remove cancelled booking records
+    _scheduler.add_job(
+        _cleanup_cancelled,
+        "interval",
+        hours=24,
+        id="cleanup_cancelled",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+
+def _cleanup_cancelled():
+    removed = db.delete_bookings_by_status("cancelled")
+    print(f"[cleanup] removed {removed} cancelled booking(s)", flush=True)
+
 
 def schedule_booking(booking_id: int, opens_at: datetime):
     fire_at = _fire_time(opens_at)

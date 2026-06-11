@@ -292,6 +292,14 @@ def update_status(booking_id: int, status: str, *,
                    slot_time=slot_time, booked_at=booked_at, id=booking_id))
 
 
+def delete_bookings_by_status(status: str) -> int:
+    """Delete all bookings with the given status. Returns the row count."""
+    with get_engine().begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM bookings WHERE status = :status"), {"status": status})
+        return result.rowcount or 0
+
+
 def delete_booking(booking_id: int):
     with get_engine().begin() as conn:
         conn.execute(text("DELETE FROM bookings WHERE id = :id"), {"id": booking_id})
