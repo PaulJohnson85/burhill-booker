@@ -133,9 +133,8 @@ def _login(page):
     page.wait_for_url(lambda url: "login.php" in url, timeout=15_000)
     page.fill('input[name="username"]', CREDENTIALS["username"])
     page.fill('input[name="password"]', CREDENTIALS["password"])
-    with page.expect_navigation(wait_until="load"):
-        page.evaluate("document.querySelector('input[type=submit]').click()")
-    page.wait_for_load_state("domcontentloaded")
+    page.locator('input[type="submit"]').click()
+    page.wait_for_load_state("domcontentloaded", timeout=15_000)
     print(f"  Logged in → {page.url}")
 
 
@@ -145,38 +144,30 @@ def _navigate_to_date(page, booking: dict = None):
     course = b["course"]
     course_text = COURSE_LINK_TEXT.get(course, "Old Course")
 
-    def nav(fn, label=""):
-        """Run fn(), wait for navigation to settle fully."""
-        with page.expect_navigation(wait_until="load", timeout=30_000):
-            fn()
-        page.wait_for_load_state("domcontentloaded")
+    def click_and_wait(locator, label=""):
+        locator.click()
+        page.wait_for_load_state("domcontentloaded", timeout=30_000)
         page.wait_for_timeout(400)
         if label:
             print(f"    [{label}] → {page.url}")
 
     # 1. Submit "Make Booking" form
-    nav(lambda: page.evaluate(
-        "document.querySelector('input[value=\"Make Booking\"]').closest('form').submit()"),
-        "Make Booking")
+    click_and_wait(page.locator('input[value="Make Booking"]'), "Make Booking")
 
     # 2. Click "Golf Club Tee Times"
-    nav(lambda: page.evaluate(
-        "document.querySelector('a[href*=\"Golf+Club+Tee+Times\"]').click()"),
-        "Golf Club Tee Times")
+    click_and_wait(page.locator('a[href*="Golf+Club+Tee+Times"]'), "Golf Club Tee Times")
 
     # 3. Click the chosen course
-    nav(lambda: page.evaluate(
-        f"document.querySelector('a[href*=\"{course_text.replace(' ', '+')}\"]').click()"),
+    click_and_wait(
+        page.locator(f'a[href*="{course_text.replace(" ", "+")}"]'),
         f"Course: {course_text}")
 
     # 4. On book_participants.php: set player count and submit gotdata=1
     players = str(b["players"])
     page.select_option('select[name="NumPeople"]', players)
-    nav(lambda: page.locator('input[name="gotdata"][value="1"]')
-        .evaluate("el => el.closest('form').submit()"), "NumPeople submit")
+    click_and_wait(page.locator('input[name="gotdata"][value="1"]'), "NumPeople submit")
 
-    # 5. If still on participants page, mark extra slots as guests (via JS — checkbox is hidden)
-    #    then submit gotdata=2. If already on book_date.php, skip this step.
+    # 5. If still on participants page, mark extra slots as guests then submit gotdata=2
     if "book_participants" in page.url:
         if int(players) > 1:
             for i in range(1, int(players)):
@@ -184,8 +175,7 @@ def _navigate_to_date(page, booking: dict = None):
                     const cb = document.querySelector('input[name="BookNonMemb{i}"]');
                     if (cb) cb.checked = true;
                 """)
-        nav(lambda: page.locator('input[name="gotdata"][value="2"]')
-            .evaluate("el => el.closest('form').submit()"), "Participants confirm")
+        click_and_wait(page.locator('input[name="gotdata"][value="2"]'), "Participants confirm")
     else:
         print(f"    [Participants] already progressed → {page.url}")
 
@@ -255,9 +245,7 @@ def _book_slot(page, slot_url: str) -> bool:
     Raises RuntimeError if something goes wrong mid-flow.
     """
     print("Booking slot …")
-    with page.expect_navigation(wait_until="load"):
-        page.evaluate(f"window.location.href = '{slot_url}'")
-    page.wait_for_load_state("domcontentloaded")
+    page.goto(slot_url, wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(800)
     print(f"  Slot page: {page.url}")
 
@@ -275,53 +263,35 @@ def _book_slot(page, slot_url: str) -> bool:
 
         if "questionnaire" in cur:
             print("  Submitting questionnaire (declining extras) …")
-            with page.expect_navigation(wait_until="load", timeout=30_000):
-                try:
-                    page.evaluate("document.querySelector('form').submit()")
-                except Exception:
-                    pass  # context destroyed by navigation is expected
-            page.wait_for_load_state("domcontentloaded")
+            btn = page.locator('input[type="submit"], button[type="submit"]').first
+            btn.click()
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(600)
             print(f"    [questionnaire] → {page.url}")
             continue
 
         if "book_confirm" in cur:
             print("  On confirmation page — submitting confirm form …")
-            with page.expect_navigation(wait_until="load", timeout=30_000):
-                try:
-                    page.evaluate("""() => {
-                        const sel = [
-                            'input[value*="Confirm" i]',
-                            'input[value*="Book" i]',
-                            'input[value*="Submit" i]',
-                            'input[type="submit"]',
-                            'button[type="submit"]',
-                        ].join(',');
-                        const btn = document.querySelector(sel);
-                        if (btn && btn.form) { btn.form.submit(); }
-                        else if (btn) { btn.click(); }
-                        else { document.querySelector('form').submit(); }
-                    }""")
-                except Exception:
-                    pass  # context destroyed by navigation is expected
-            page.wait_for_load_state("domcontentloaded")
+            btn = page.locator(
+                'input[value*="Confirm" i], input[value*="Book" i], '
+                'input[type="submit"], button[type="submit"]'
+            ).first
+            btn.click()
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"    [book_confirm submitted] → {page.url}")
             continue
 
-        btn = page.query_selector(
+        btn = page.locator(
             'input[value*="Confirm" i]:not([type=hidden]), '
             'input[value*="Basket" i]:not([type=hidden]), '
             'input[value*="Proceed" i]:not([type=hidden]), '
             'button:has-text("Confirm"), button:has-text("Proceed")'
-        )
-        if btn:
-            label = btn.get_attribute("value") or btn.inner_text().strip()
-            print(f"  Clicking '{label}' …")
-            with page.expect_navigation(wait_until="load", timeout=30_000):
-                page.evaluate("arguments[0].form ? arguments[0].form.submit() : arguments[0].click()",
-                               btn)
-            page.wait_for_load_state("domcontentloaded")
+        ).first
+        if btn.count() > 0:
+            print(f"  Clicking confirm button …")
+            btn.click()
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"  Post-confirm page: {page.url}")
             page.screenshot(path="booking_confirmed.png")
