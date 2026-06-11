@@ -38,6 +38,7 @@ def run(booking_id: int, dry_run: bool = False):
         "date":              row["date"],
         "preferred_time":    row["preferred_time"],
         "latest_time":       row.get("latest_time"),
+        "partner_name":      row.get("partner_name"),
         "lead_time_minutes": 2,
     }
     _p(f"[run_booking] booking={booking}")

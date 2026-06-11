@@ -88,7 +88,8 @@ def init_db():
 
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
-                "ALTER TABLE bookings ADD COLUMN latest_time TEXT"):
+                "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
+                "ALTER TABLE bookings ADD COLUMN partner_name TEXT"):
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -150,20 +151,23 @@ def get_all_users() -> list:
 
 def add_booking(course, players, date, preferred_time,
                 opens_at, op_status, op_message, user_id=None,
-                latest_time=None) -> int:
+                latest_time=None, partner_name=None) -> int:
     pg = _is_pg()
     sql = """
         INSERT INTO bookings
-            (user_id, course, players, date, preferred_time, latest_time, status,
-             opens_at, created_at, open_play_status, open_play_message)
+            (user_id, course, players, date, preferred_time, latest_time,
+             partner_name, status, opens_at, created_at,
+             open_play_status, open_play_message)
         VALUES
             (:user_id, :course, :players, :date, :preferred_time, :latest_time,
-             'pending', :opens_at, :created_at, :op_status, :op_message)
+             :partner_name, 'pending', :opens_at, :created_at,
+             :op_status, :op_message)
     """
     if pg:
         sql += " RETURNING id"
     params = dict(user_id=user_id, course=course, players=players, date=date,
                   preferred_time=preferred_time, latest_time=latest_time,
+                  partner_name=partner_name,
                   opens_at=opens_at, created_at=datetime.now().isoformat(),
                   op_status=op_status, op_message=op_message)
     with get_engine().begin() as conn:

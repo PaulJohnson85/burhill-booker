@@ -229,6 +229,61 @@ def _submit_participants_form(page, gotdata: str, label=""):
     return True
 
 
+def _set_other_players(page, players: int, partner: str = ""):
+    """Fill player slots 2..n on book_participants: slot 2 gets the named
+    member (typed into BookMemb1 with the member-search box ticked) when
+    partner is set, all other slots are marked as guests."""
+    for i in range(1, players):
+        if i == 1 and partner:
+            try:
+                res = page.evaluate("""(partner) => {
+                    const out = [];
+                    const t = document.querySelector('input[name="BookMemb1"]');
+                    if (t) { t.value = partner; out.push('BookMemb1=' + partner); }
+                    const ms = document.querySelector('input[name="mschk1"]');
+                    if (ms) { ms.checked = true; out.push('mschk1 ticked'); }
+                    const g = document.querySelector('input[name="BookNonMemb1"]');
+                    if (g) { g.checked = false; out.push('BookNonMemb1 cleared'); }
+                    return out.join(', ') || 'no member inputs found';
+                }""", partner)
+                print(f"    [partner fill] {res}", flush=True)
+            except Exception as e:
+                print(f"    [partner fill failed] {str(e)[:100]}", flush=True)
+        else:
+            try:
+                page.evaluate(f"""() => {{
+                    const cb = document.querySelector('input[name="BookNonMemb{i}"]');
+                    if (cb) cb.checked = true;
+                }}""")
+            except Exception:
+                pass
+
+
+def _try_pick_member(page, partner: str) -> str:
+    """If the page shows member search results (a select of matches, or
+    clickable names), pick the first one matching partner."""
+    try:
+        return page.evaluate("""(partner) => {
+            const p = partner.toLowerCase();
+            for (const sel of Array.from(document.querySelectorAll('select'))) {
+                for (const opt of Array.from(sel.options)) {
+                    if ((opt.text || '').toLowerCase().includes(p)) {
+                        sel.value = opt.value;
+                        sel.dispatchEvent(new Event('change', {bubbles: true}));
+                        return 'selected "' + opt.text.trim() + '" in ' + (sel.name || '?');
+                    }
+                }
+            }
+            for (const el of Array.from(document.querySelectorAll('a, button, input[type=button], td[onclick]'))) {
+                const txt = (el.innerText || el.value || '').trim().toLowerCase();
+                if (txt && txt.includes(p)) { el.click(); return 'clicked "' + txt + '"'; }
+            }
+            return 'no-match';
+        }""", partner)
+    except Exception as e:
+        return f"error: {str(e)[:80]}"
+
+
 def _navigate_to_date(page, booking: dict = None):
     print("Navigating to booking …")
     b = booking or BOOKING
@@ -305,14 +360,20 @@ def _navigate_to_date(page, booking: dict = None):
                 page.wait_for_timeout(600)
             continue
 
-        # cur_n >= players: mark the extra players as guests, then confirm
+        # cur_n >= players: set up the other players (named member or guests),
+        # then confirm
+        partner = (b.get("partner_name") or "").strip()
         if players > 1:
-            for i in range(1, players):
+            _set_other_players(page, players, partner)
+            if partner and attempt > 1:
+                # A previous confirm may have re-rendered with member search
+                # results — pick the matching member if so
+                pick = _try_pick_member(page, partner)
+                print(f"    [member pick] {pick}", flush=True)
+                page.wait_for_timeout(600)
                 try:
-                    page.evaluate(f"""() => {{
-                        const cb = document.querySelector('input[name="BookNonMemb{i}"]');
-                        if (cb) cb.checked = true;
-                    }}""")
+                    body = page.evaluate("() => document.body.innerText.trim().slice(0, 500)")
+                    print(f"    [participants text] {body}", flush=True)
                 except Exception:
                     pass
         _dump_forms(page, "participants page before confirm")

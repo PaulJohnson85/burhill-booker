@@ -242,12 +242,15 @@ def add():
     if latest_time and latest_time <= preferred_time:
         latest_time = None  # ignore a window that ends before it starts
 
+    partner_name = (f.get("partner_name") or "").strip() or None
+
     booking_id = db.add_booking(
         course=course, players=players, date=date_str,
         preferred_time=preferred_time, opens_at=opens_at.isoformat(),
         op_status=op["status"], op_message=op["message"],
         user_id=current_user.id,
         latest_time=latest_time,
+        partner_name=partner_name,
     )
     sched.schedule_booking(booking_id, opens_at)
     return redirect(url_for("index"))
