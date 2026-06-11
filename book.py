@@ -157,23 +157,29 @@ def _navigate_to_date(page, booking: dict = None):
         if label:
             print(f"    [{label}] → {page.url}")
 
-    # 1. Submit "Make Booking" form
+    # 1+2+3. Navigate directly to the course participants page, bypassing home page buttons
     print(f"    [post-login] url={page.url}")
-    # Find all input[type=submit] values to diagnose what's on the page
-    btns = page.locator('input[type="submit"], button[type="submit"]').all()
-    print(f"    [post-login] submit buttons: {[b.get_attribute('value') or b.inner_text() for b in btns]}")
-    links = page.locator('a').all()
-    print(f"    [post-login] links: {[a.inner_text().strip() for a in links[:15]]}")
-    make_booking = page.locator('input[value="Make Booking"]').first
-    click_and_wait(make_booking, "Make Booking")
+    booking_type_url = (
+        f"{BASE_URL}/book_type.php?clubid={CLUB_ID}"
+        f"&BookingType=Golf+Club+Tee+Times"
+        f"&SubType={course_text.replace(' ', '+')}"
+    )
+    page.goto(booking_type_url, wait_until="domcontentloaded", timeout=30_000)
+    page.wait_for_timeout(500)
+    print(f"    [direct nav] → {page.url}")
 
-    # 2. Click "Golf Club Tee Times"
-    click_and_wait(page.locator('a[href*="Golf+Club+Tee+Times"]'), "Golf Club Tee Times")
+    # If we landed on book_participants, great. If on book_type, click through.
+    if "book_type" in page.url or "book_participants" not in page.url:
+        # Try clicking Golf Club Tee Times link if present
+        link = page.locator('a[href*="Golf+Club+Tee+Times"]')
+        if link.count() > 0:
+            click_and_wait(link.first, "Golf Club Tee Times")
+        # Then click course link if present
+        course_link = page.locator(f'a[href*="{course_text.replace(" ", "+")}"]')
+        if course_link.count() > 0:
+            click_and_wait(course_link.first, f"Course: {course_text}")
 
-    # 3. Click the chosen course
-    click_and_wait(
-        page.locator(f'a[href*="{course_text.replace(" ", "+")}"]'),
-        f"Course: {course_text}")
+    print(f"    [after nav] → {page.url}")
 
     # 4. On book_participants.php: set player count and submit gotdata=1
     players = str(b["players"])
