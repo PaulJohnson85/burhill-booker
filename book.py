@@ -178,14 +178,15 @@ def _submit_participants_form(page, gotdata: str, label=""):
     # NOT DOM descendants (ESP's mis-nested table markup), so CSS form:has(...)
     # cannot find them. Use document.forms + form.elements in JS instead.
     js = f"""() => {{
-        const form = Array.from(document.forms).find(f => {{
-            const el = f.elements['gotdata'];
-            return el && el.value === '{gotdata}';
-        }});
+        // f.elements['gotdata'] returns a RadioNodeList when names collide and
+        // its .value is empty for non-radios — iterate elements explicitly.
+        const form = Array.from(document.forms).find(f =>
+            Array.from(f.elements).some(el =>
+                el.name === 'gotdata' && el.value === '{gotdata}'));
         if (!form) return 'no-form';
         const btn = Array.from(form.elements).find(el =>
             (el.type === 'submit' || el.type === 'image'));
-        if (btn) {{ btn.click(); return 'clicked-button'; }}
+        if (btn) {{ btn.click(); return 'clicked-button:' + (btn.value || btn.name); }}
         form.submit();
         return 'js-submit';
     }}"""
