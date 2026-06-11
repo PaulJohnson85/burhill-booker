@@ -157,8 +157,11 @@ def _navigate_to_date(page, booking: dict = None):
         if label:
             print(f"    [{label}] → {page.url}")
 
-    # 1. Submit "Make Booking" form — try multiple selectors
-    make_booking = page.locator('input[value="Make Booking"], input[value*="Booking"], input[type="submit"]').first
+    # 1. Submit "Make Booking" form
+    # Dump page content to diagnose headless layout differences
+    print(f"    [post-login page] url={page.url}")
+    print(f"    [post-login HTML] {page.content()[:1500]}")
+    make_booking = page.locator('input[value="Make Booking"]').first
     click_and_wait(make_booking, "Make Booking")
 
     # 2. Click "Golf Club Tee Times"
