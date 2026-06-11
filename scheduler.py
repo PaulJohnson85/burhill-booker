@@ -66,7 +66,25 @@ def init_scheduler():
 
 def _cleanup_cancelled():
     removed = db.delete_bookings_by_status("cancelled")
-    print(f"[cleanup] removed {removed} cancelled booking(s)", flush=True)
+
+    # Failed bookings age out after 3 days (measured from when the booking
+    # ran — opens_at — falling back to when it was created)
+    cutoff = datetime.now() - timedelta(days=3)
+    aged = 0
+    for b in db.get_all_bookings():
+        if b["status"] != "failed":
+            continue
+        ts = b.get("opens_at") or b.get("created_at")
+        try:
+            when = datetime.fromisoformat(ts)
+        except Exception:
+            continue
+        if when < cutoff:
+            db.delete_booking(b["id"])
+            aged += 1
+
+    print(f"[cleanup] removed {removed} cancelled, {aged} failed (>3 days) booking(s)",
+          flush=True)
 
 
 def schedule_booking(booking_id: int, opens_at: datetime):
