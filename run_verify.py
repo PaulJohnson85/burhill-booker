@@ -26,7 +26,35 @@ def _p(msg):
 
 
 def _capture_matches(page, query: str) -> dict:
-    """Collect anything that looks like member search results."""
+    """Collect anything that looks like member search results. Never raises —
+    retries once after a settle delay, then falls back to raw HTML scraping."""
+    for attempt in range(2):
+        try:
+            return _capture_matches_js(page, query)
+        except Exception as e:
+            _p(f"  [capture attempt {attempt} failed] {str(e)[:120]}")
+            page.wait_for_timeout(1500)
+    # Fallback: regex over the raw HTML
+    out = {"selects": [], "clickables": [], "inputs": [], "error": "", "body": ""}
+    try:
+        import re as _re
+        html = page.content()
+        text = _re.sub(r"<[^>]+>", " ", html)
+        text = _re.sub(r"\s+", " ", text).strip()
+        out["body"] = text[:800]
+        m = _re.search(r"Error with participant[^<.]*", text, _re.I)
+        if m:
+            out["error"] = m.group(0).strip()
+        for mm in _re.finditer(r"<option[^>]*>([^<]+)</option>", html, _re.I):
+            t = mm.group(1).strip()
+            if t and query.lower() in t.lower():
+                out["selects"].append({"name": "?", "options": [{"text": t, "value": ""}]})
+    except Exception as e:
+        out["error"] = f"capture fallback failed: {str(e)[:100]}"
+    return out
+
+
+def _capture_matches_js(page, query: str) -> dict:
     return page.evaluate("""(query) => {
         const q = query.toLowerCase();
         const out = {selects: [], clickables: [], inputs: [], error: '', body: ''};
