@@ -181,10 +181,14 @@ def _navigate_to_date(page, booking: dict = None):
     # 4. On book_participants.php: set player count and submit gotdata=1
     players = str(b["players"])
     page.select_option('select[name="NumPeople"]', players)
-    # Submit the participants form — find the visible submit button in the same form
-    # as the gotdata hidden input, rather than clicking the hidden input itself
-    submit_btn = page.locator('form:has(input[name="gotdata"][value="1"]) input[type="submit"]').first
-    click_and_wait(submit_btn, "NumPeople submit")
+    # No visible submit button — submit the form programmatically
+    try:
+        page.locator('form:has(input[name="gotdata"][value="1"])').evaluate("f => f.submit()")
+    except Exception:
+        pass  # context destroyed by navigation is expected
+    page.wait_for_load_state("domcontentloaded", timeout=30_000)
+    page.wait_for_timeout(400)
+    print(f"    [NumPeople submit] → {page.url}")
 
     # 5. If still on participants page, mark extra slots as guests then submit gotdata=2
     if "book_participants" in page.url:
@@ -194,8 +198,13 @@ def _navigate_to_date(page, booking: dict = None):
                     const cb = document.querySelector('input[name="BookNonMemb{i}"]');
                     if (cb) cb.checked = true;
                 """)
-        submit_btn2 = page.locator('form:has(input[name="gotdata"][value="2"]) input[type="submit"]').first
-        click_and_wait(submit_btn2, "Participants confirm")
+        try:
+            page.locator('form:has(input[name="gotdata"][value="2"])').evaluate("f => f.submit()")
+        except Exception:
+            pass
+        page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(400)
+        print(f"    [Participants confirm] → {page.url}")
     else:
         print(f"    [Participants] already progressed → {page.url}")
 
