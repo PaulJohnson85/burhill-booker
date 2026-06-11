@@ -145,14 +145,21 @@ def _navigate_to_date(page, booking: dict = None):
     course_text = COURSE_LINK_TEXT.get(course, "Old Course")
 
     def click_and_wait(locator, label=""):
-        locator.click()
+        try:
+            locator.click(timeout=30_000)
+        except Exception as e:
+            page.screenshot(path=f"timeout_{label.replace(' ','_')}.png")
+            print(f"    [TIMEOUT on '{label}'] page={page.url}")
+            print(f"    HTML snippet: {page.content()[:800]}")
+            raise
         page.wait_for_load_state("domcontentloaded", timeout=30_000)
         page.wait_for_timeout(400)
         if label:
             print(f"    [{label}] → {page.url}")
 
-    # 1. Submit "Make Booking" form
-    click_and_wait(page.locator('input[value="Make Booking"]'), "Make Booking")
+    # 1. Submit "Make Booking" form — try multiple selectors
+    make_booking = page.locator('input[value="Make Booking"], input[value*="Booking"], input[type="submit"]').first
+    click_and_wait(make_booking, "Make Booking")
 
     # 2. Click "Golf Club Tee Times"
     click_and_wait(page.locator('a[href*="Golf+Club+Tee+Times"]'), "Golf Club Tee Times")
