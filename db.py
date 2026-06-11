@@ -70,11 +70,13 @@ def init_db():
                 open_play_message TEXT
             )
         """))
-        # Add user_id column to existing deployments that pre-date auth
-        try:
+
+    # Separate transaction — ALTER TABLE failure must not roll back CREATE TABLE
+    try:
+        with engine.begin() as conn:
             conn.execute(text("ALTER TABLE bookings ADD COLUMN user_id INTEGER"))
-        except Exception:
-            pass  # column already exists
+    except Exception:
+        pass  # column already exists
 
 
 # ── Users ───────────────────────────────────────────────────────────────────
