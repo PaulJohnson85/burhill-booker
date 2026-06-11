@@ -133,6 +133,50 @@ def _cancel_on_site(page, booking) -> bool:
     page.wait_for_timeout(800)
     _p(f"  [after cancel submit] → {page.url}")
 
+    # The response may be a confirmation page (same URL, different content).
+    # Log what came back and submit any confirm form that mentions our ref.
+    try:
+        body = page.evaluate("() => document.body.innerText.trim().slice(0, 600)")
+        _p(f"  [response text] {body}")
+    except Exception:
+        pass
+    _dump_forms(page, "after cancel submit")
+    for step in range(2):
+        try:
+            how = page.evaluate("""(ref) => {
+                const menu = ['home.php','logout.php','book_start','book_back',
+                              'book_basket_view','player_details',
+                              'player_changepassword','player_attachments','club_details'];
+                // A confirm form: not a side-menu form, not a rebook form, and
+                // either references our ref or has a confirm-ish button.
+                for (const f of Array.from(document.forms)) {
+                    if (menu.some(m => (f.action || '').includes(m))) continue;
+                    const els = {};
+                    for (const el of Array.from(f.elements)) if (el.name) els[el.name] = el.value;
+                    if (els['rebook']) continue;
+                    const isOurs = els['ref'] === ref;
+                    const btn = Array.from(f.elements).find(el =>
+                        (el.type === 'submit' || el.type === 'image') &&
+                        /confirm|yes|cancel/i.test(el.value || el.name || ''));
+                    if (isOurs && els['cancel']) continue;  // that's the original cancel form again
+                    if (isOurs || btn) {
+                        const b = btn || Array.from(f.elements).find(el =>
+                            el.type === 'submit' || el.type === 'image');
+                        if (b) { b.click(); return 'clicked:' + (b.value || b.name || '?'); }
+                        f.submit(); return 'js-submit';
+                    }
+                }
+                return 'no-confirm-form';
+            }""", ref)
+            _p(f"  [confirm step {step}: {how}]")
+            if how == "no-confirm-form":
+                break
+        except Exception as e:
+            _p(f"  [confirm step {step}] evaluate raised (navigation): {str(e)[:80]}")
+        page.wait_for_load_state("domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(800)
+        _p(f"  [after confirm step {step}] → {page.url}")
+
     # 3. The cancel page usually asks for confirmation — submit its own form
     #    (filtering out the side-menu forms), for up to 3 steps.
     for step in range(3):
