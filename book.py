@@ -174,29 +174,33 @@ def _submit_participants_form(page, gotdata: str, label=""):
     Click the form's own submit button first so its name=value is posted;
     fall back to JS form.submit().
     """
-    form = page.locator(f'form:has(input[name="gotdata"][value="{gotdata}"])').first
-    if form.count() == 0:
+    # The gotdata inputs are associated with their form via form.elements but are
+    # NOT DOM descendants (ESP's mis-nested table markup), so CSS form:has(...)
+    # cannot find them. Use document.forms + form.elements in JS instead.
+    js = f"""() => {{
+        const form = Array.from(document.forms).find(f => {{
+            const el = f.elements['gotdata'];
+            return el && el.value === '{gotdata}';
+        }});
+        if (!form) return 'no-form';
+        const btn = Array.from(form.elements).find(el =>
+            (el.type === 'submit' || el.type === 'image'));
+        if (btn) {{ btn.click(); return 'clicked-button'; }}
+        form.submit();
+        return 'js-submit';
+    }}"""
+    how = "?"
+    try:
+        how = page.evaluate(js)
+    except Exception as e:
+        # Context destroyed by the resulting navigation is expected
+        print(f"    [{label}] evaluate raised (likely navigation): {str(e)[:120]}", flush=True)
+    if how == "no-form":
         print(f"    [{label}] no form with gotdata={gotdata} — skipping", flush=True)
         return
-
-    btn = form.locator('input[type="submit"], button[type="submit"], input[type="image"]').first
-    try:
-        if btn.count() > 0:
-            btn.click(timeout=5_000, force=True)
-            page.wait_for_load_state("domcontentloaded", timeout=30_000)
-            page.wait_for_timeout(400)
-            print(f"    [{label} via button gotdata={gotdata}] → {page.url}", flush=True)
-            return
-    except Exception as e:
-        print(f"    [{label}] button click failed: {str(e)[:120]}", flush=True)
-
-    try:
-        form.evaluate("f => f.submit()")
-    except Exception as e:
-        print(f"    [{label}] JS submit raised: {str(e)[:120]}", flush=True)
     page.wait_for_load_state("domcontentloaded", timeout=30_000)
     page.wait_for_timeout(400)
-    print(f"    [{label} via JS gotdata={gotdata}] → {page.url}", flush=True)
+    print(f"    [{label} via {how} gotdata={gotdata}] → {page.url}", flush=True)
 
 
 def _navigate_to_date(page, booking: dict = None):
