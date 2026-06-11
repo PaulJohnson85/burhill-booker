@@ -104,9 +104,12 @@ def _run_booking_subprocess(booking_id: int):
         capture_output=True,
         text=True,
     )
-    print(result.stdout)
+    if result.stdout:
+        print(f"[booking {booking_id} stdout]\n{result.stdout}")
+    if result.stderr:
+        print(f"[booking {booking_id} stderr]\n{result.stderr}", flush=True)
     if result.returncode != 0:
         row = db.get_booking(booking_id)
         if row and row["status"] not in ("failed", "booked"):
             db.update_status(booking_id, "failed",
-                             message=(result.stderr or "Unknown error")[-400:])
+                             message=(result.stderr or result.stdout or "Unknown error")[-400:])
