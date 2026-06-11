@@ -164,13 +164,16 @@ def _navigate_to_date(page, booking: dict = None):
     page.goto(f"{BASE_URL}/book_start.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(500)
     print(f"    [book_start] → {page.url}")
+    print(f"    [book_start links] {[a.inner_text().strip() for a in page.locator('a').all()[:20]]}")
 
-    # 2. Click "Golf Club Tee Times"
-    click_and_wait(page.locator('a[href*="Golf+Club+Tee+Times"]').first, "Golf Club Tee Times")
-
-    # 3. Click the chosen course
+    # 2. Click "Golf Club Tee Times" — match by link text
     click_and_wait(
-        page.locator(f'a[href*="{course_text.replace(" ", "+")}"]').first,
+        page.get_by_role("link", name="Golf Club Tee Times").first,
+        "Golf Club Tee Times")
+
+    # 3. Click the chosen course — match by link text
+    click_and_wait(
+        page.get_by_role("link", name=course_text).first,
         f"Course: {course_text}")
 
     print(f"    [after course select] → {page.url}")
