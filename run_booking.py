@@ -12,7 +12,7 @@ import sys
 from datetime import datetime
 
 import db
-from config import CREDENTIALS, BOOKING_WINDOW
+import notify
 from book import _login, _navigate_to_date, _find_slot, _book_slot
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
@@ -24,10 +24,10 @@ def run(booking_id: int, dry_run: bool = False):
         sys.exit(1)
 
     booking = {
-        "course":         row["course"],
-        "players":        row["players"],
-        "date":           row["date"],
-        "preferred_time": row["preferred_time"],
+        "course":            row["course"],
+        "players":           row["players"],
+        "date":              row["date"],
+        "preferred_time":    row["preferred_time"],
         "lead_time_minutes": 2,
     }
 
@@ -35,7 +35,9 @@ def run(booking_id: int, dry_run: bool = False):
 
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=False)
+            import os
+            headless = os.environ.get("HEADLESS", "0") == "1"
+            browser = pw.chromium.launch(headless=headless)
             page = browser.new_page()
             try:
                 _login(page)
@@ -43,9 +45,9 @@ def run(booking_id: int, dry_run: bool = False):
                 slot_url = _find_slot(page, booking)
 
                 if slot_url is None:
-                    page.screenshot(path=f"no_slot_{booking_id}.png")
-                    db.update_status(booking_id, "failed",
-                                     message="No matching tee time found.")
+                    msg = "No matching tee time found."
+                    db.update_status(booking_id, "failed", message=msg)
+                    notify.booking_failed(booking, msg)
                     sys.exit(1)
 
                 m = re.search(r"Start=(\d{2}%3A\d{2})", slot_url)
@@ -64,18 +66,21 @@ def run(booking_id: int, dry_run: bool = False):
                     booked_at=datetime.now().isoformat(),
                     message=f"Booked at {slot_time}",
                 )
+                notify.booking_confirmed(booking, slot_time)
                 print(f"✅  Booking {booking_id} confirmed at {slot_time}")
 
             except PWTimeout as e:
-                page.screenshot(path=f"error_{booking_id}.png")
-                db.update_status(booking_id, "failed",
-                                 message=f"Timeout: {str(e)[:300]}")
+                msg = f"Timeout: {str(e)[:300]}"
+                db.update_status(booking_id, "failed", message=msg)
+                notify.booking_failed(booking, msg)
                 sys.exit(1)
             finally:
                 browser.close()
 
     except Exception as e:
-        db.update_status(booking_id, "failed", message=str(e)[:300])
+        msg = str(e)[:300]
+        db.update_status(booking_id, "failed", message=msg)
+        notify.booking_failed(booking, msg)
         raise
 
 

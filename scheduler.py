@@ -16,7 +16,7 @@ _scheduler: BackgroundScheduler = None
 def init_scheduler():
     global _scheduler
     jobstores = {
-        "default": SQLAlchemyJobStore(url=f"sqlite:///{db.DB_PATH}")
+        "default": SQLAlchemyJobStore(url=db._db_url())
     }
     _scheduler = BackgroundScheduler(jobstores=jobstores, timezone="Europe/London")
     _scheduler.start()
