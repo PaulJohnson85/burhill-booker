@@ -158,9 +158,12 @@ def _navigate_to_date(page, booking: dict = None):
             print(f"    [{label}] → {page.url}")
 
     # 1. Submit "Make Booking" form
-    # Dump page content to diagnose headless layout differences
-    print(f"    [post-login page] url={page.url}")
-    print(f"    [post-login HTML] {page.content()[:1500]}")
+    print(f"    [post-login] url={page.url}")
+    # Find all input[type=submit] values to diagnose what's on the page
+    btns = page.locator('input[type="submit"], button[type="submit"]').all()
+    print(f"    [post-login] submit buttons: {[b.get_attribute('value') or b.inner_text() for b in btns]}")
+    links = page.locator('a').all()
+    print(f"    [post-login] links: {[a.inner_text().strip() for a in links[:15]]}")
     make_booking = page.locator('input[value="Make Booking"]').first
     click_and_wait(make_booking, "Make Booking")
 

@@ -111,5 +111,6 @@ def _run_booking_subprocess(booking_id: int):
     if result.returncode != 0:
         row = db.get_booking(booking_id)
         if row and row["status"] not in ("failed", "booked"):
-            db.update_status(booking_id, "failed",
-                             message=(result.stderr or result.stdout or "Unknown error")[-400:])
+            # Combine stdout + stderr, take last 2000 chars so HTML dump is visible
+            combined = (result.stdout or "") + "\n" + (result.stderr or "")
+            db.update_status(booking_id, "failed", message=combined.strip()[-2000:])
