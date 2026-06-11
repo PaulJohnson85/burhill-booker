@@ -283,23 +283,24 @@ def _book_slot(page, slot_url: str) -> bool:
             continue
 
         if "book_confirm" in cur:
-            print("  On confirmation page — clicking confirm …")
-            # Try submit button first, then any input[type=submit]
-            clicked = page.evaluate("""() => {
-                const sel = [
-                    'input[value*="Confirm" i]',
-                    'input[value*="Book" i]',
-                    'input[value*="Submit" i]',
-                    'input[type="submit"]',
-                    'button[type="submit"]',
-                ].join(',');
-                const btn = document.querySelector(sel);
-                if (btn) { btn.form ? btn.form.submit() : btn.click(); return btn.value || btn.innerText; }
-                return null;
-            }""")
-            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            print("  On confirmation page — submitting confirm form …")
+            with page.expect_navigation(wait_until="load", timeout=30_000):
+                page.evaluate("""() => {
+                    const sel = [
+                        'input[value*="Confirm" i]',
+                        'input[value*="Book" i]',
+                        'input[value*="Submit" i]',
+                        'input[type="submit"]',
+                        'button[type="submit"]',
+                    ].join(',');
+                    const btn = document.querySelector(sel);
+                    if (btn && btn.form) { btn.form.submit(); }
+                    else if (btn) { btn.click(); }
+                    else { document.querySelector('form').submit(); }
+                }""")
+            page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(800)
-            print(f"    [confirm clicked: {clicked}] → {page.url}")
+            print(f"    [book_confirm submitted] → {page.url}")
             continue
 
         btn = page.query_selector(
