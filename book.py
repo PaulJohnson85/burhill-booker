@@ -439,6 +439,12 @@ def _book_slot(page, slot_url: str) -> bool:
     for step in range(max_steps):
         cur = page.url
 
+        if "book_complete" in cur:
+            # ESP's booking-success page — the booking is made
+            print("  ✅ Landed on book_complete.php — booking made.")
+            page.screenshot(path="booking_confirmed.png")
+            return True
+
         if "home.php" in cur:
             # Landed on home — now verify the booking actually exists
             print("  Redirected to home — verifying booking …")
