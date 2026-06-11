@@ -106,7 +106,7 @@
     <div class="glass rounded-lg px-4 py-2 flex items-center gap-2">
       <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
       <span class="text-gray-400">Booked</span>
-      <span class="font-bold text-white">{{ counts.booked }}</span>
+      <span class="font-bold text-white">{{ site_bookings|length if site_bookings else counts.booked }}</span>
     </div>
     {% if counts.failed > 0 %}
     <div class="glass rounded-lg px-4 py-2 flex items-center gap-2">
