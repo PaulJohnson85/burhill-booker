@@ -165,14 +165,31 @@ def _dump_forms(page, label=""):
         print(f"    [forms dump failed: {e}]", flush=True)
 
 
+def _participants_state(page):
+    """Read the current book_participants state via JS: which gotdata forms exist
+    and the value of CurNumPeople. Returns {} if the page can't be read."""
+    js = """() => {
+        const out = {forms: [], curNum: null};
+        for (const f of Array.from(document.forms)) {
+            for (const el of Array.from(f.elements)) {
+                if (el.name === 'gotdata') out.forms.push(el.value);
+                if (el.name === 'CurNumPeople') out.curNum = el.value;
+            }
+        }
+        return out;
+    }"""
+    try:
+        return page.evaluate(js)
+    except Exception:
+        return {}
+
+
 def _submit_participants_form(page, gotdata: str, label=""):
     """
-    Advance the book_participants page by submitting the form whose hidden
-    gotdata input has the given value. The page has TWO such forms:
-      gotdata=1 — the NumPeople dropdown (re-renders the page with player rows)
-      gotdata=2 — the confirm form (BookMemb0/CurNumPeople + SUBMIT button)
-    Click the form's own submit button first so its name=value is posted;
-    fall back to JS form.submit().
+    Submit the book_participants form whose hidden gotdata input has the given
+    value, clicking the form's own submit button (so its name=value is posted),
+    falling back to JS form.submit(). Polls up to 8s for the form to appear,
+    since a prior onchange auto-submit may still be navigating.
     """
     # The gotdata inputs are associated with their form via form.elements but are
     # NOT DOM descendants (ESP's mis-nested table markup), so CSS form:has(...)
@@ -190,18 +207,26 @@ def _submit_participants_form(page, gotdata: str, label=""):
         form.submit();
         return 'js-submit';
     }}"""
-    how = "?"
-    try:
-        how = page.evaluate(js)
-    except Exception as e:
-        # Context destroyed by the resulting navigation is expected
-        print(f"    [{label}] evaluate raised (likely navigation): {str(e)[:120]}", flush=True)
+    how = "no-form"
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        try:
+            how = page.evaluate(js)
+        except Exception as e:
+            # Context destroyed by the resulting navigation means a submit landed
+            print(f"    [{label}] evaluate raised (navigation): {str(e)[:80]}", flush=True)
+            how = "navigated"
+            break
+        if how != "no-form":
+            break
+        page.wait_for_timeout(500)
     if how == "no-form":
-        print(f"    [{label}] no form with gotdata={gotdata} — skipping", flush=True)
-        return
+        print(f"    [{label}] no form with gotdata={gotdata} after 8s — skipping", flush=True)
+        return False
     page.wait_for_load_state("domcontentloaded", timeout=30_000)
     page.wait_for_timeout(400)
     print(f"    [{label} via {how} gotdata={gotdata}] → {page.url}", flush=True)
+    return True
 
 
 def _navigate_to_date(page, booking: dict = None):
@@ -244,37 +269,60 @@ def _navigate_to_date(page, booking: dict = None):
 
     print(f"    [after course select] → {page.url}")
 
-    # 4. On book_participants.php: set player count and progress the form
-    players = str(b["players"])
+    # 4. Drive book_participants.php by its actual state. Selecting NumPeople may
+    #    auto-submit (onchange), so we loop: bump player count until the page shows
+    #    the desired CurNumPeople, then mark guests and submit the confirm form.
+    players = int(b["players"])
     _dump_forms(page, "participants page")
-    page.select_option('select[name="NumPeople"]', players)
-    page.wait_for_timeout(600)  # NumPeople change may trigger an onchange reload
-    # gotdata=1 form re-renders the page with one row per player
-    _submit_participants_form(page, "1", "NumPeople submit")
 
-    # 5. If still on participants page, mark extra slots as guests then confirm
-    if "book_participants" in page.url:
-        if int(players) > 1:
-            for i in range(1, int(players)):
+    # Kick off: set the player count (its onchange may submit gotdata=1 itself)
+    try:
+        page.select_option('select[name="NumPeople"]', str(players))
+        page.wait_for_timeout(800)
+    except Exception as e:
+        print(f"    [NumPeople select failed] {str(e)[:120]}", flush=True)
+
+    for attempt in range(6):
+        if "book_participants" not in page.url:
+            print(f"    [Participants] progressed → {page.url}", flush=True)
+            break
+
+        state = _participants_state(page)
+        cur = state.get("curNum")
+        forms = state.get("forms", [])
+        print(f"    [participants attempt {attempt}] curNum={cur} forms={forms} url={page.url}", flush=True)
+
+        cur_n = int(cur) if (cur and str(cur).isdigit()) else 1
+
+        if cur_n < players:
+            # Page still shows fewer players — set count and submit gotdata=1 to re-render
+            try:
+                page.select_option('select[name="NumPeople"]', str(players))
+            except Exception:
+                pass
+            if not _submit_participants_form(page, "1", "NumPeople submit"):
+                # gotdata=1 gone (likely already submitted) — re-loop to re-read state
+                page.wait_for_timeout(600)
+            continue
+
+        # cur_n >= players: mark the extra players as guests, then confirm
+        if players > 1:
+            for i in range(1, players):
                 try:
-                    page.evaluate(f"""
+                    page.evaluate(f"""() => {{
                         const cb = document.querySelector('input[name="BookNonMemb{i}"]');
                         if (cb) cb.checked = true;
-                    """)
+                    }}""")
                 except Exception:
                     pass
         _dump_forms(page, "participants page before confirm")
-        # gotdata=2 form is the actual confirm (has the SUBMIT button)
         _submit_participants_form(page, "2", "Participants confirm")
-        # The click starts a navigation to book_date.php — wait for it to land
         try:
-            page.wait_for_url(lambda url: "book_participants" not in url, timeout=20_000)
+            page.wait_for_url(lambda url: "book_participants" not in url, timeout=15_000)
         except Exception:
-            print(f"    [Participants confirm] still on {page.url} after 20s", flush=True)
+            print(f"    [Participants confirm] still on {page.url}", flush=True)
         page.wait_for_load_state("domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(800)
-    else:
-        print(f"    [Participants] already progressed → {page.url}")
+        page.wait_for_timeout(600)
 
     print(f"    Current page: {page.url}")
 
