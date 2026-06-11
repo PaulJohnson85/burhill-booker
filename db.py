@@ -71,6 +71,21 @@ def init_db():
             )
         """))
 
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS site_bookings (
+                id           {id_col},
+                user_id      INTEGER REFERENCES users(id),
+                ref          TEXT,
+                date_text    TEXT,
+                course       TEXT,
+                participants TEXT,
+                raw          TEXT,
+                can_cancel   {bool_t} NOT NULL DEFAULT {'FALSE' if pg else '0'},
+                synced_at    TEXT
+            )
+        """))
+
     # Separate transaction — ALTER TABLE failure must not roll back CREATE TABLE
     try:
         with engine.begin() as conn:
@@ -181,6 +196,42 @@ def get_all_bookings() -> list:
             """)
         ).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Site bookings (synced from Burhill's book_history.php) ─────────────────
+
+def replace_site_bookings(user_id: int, rows: list):
+    """Replace the user's synced site bookings with a fresh set.
+    Each row: dict(ref, date_text, course, participants, raw, can_cancel)."""
+    now = datetime.now().isoformat()
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM site_bookings WHERE user_id = :uid"),
+                     {"uid": user_id})
+        for r in rows:
+            conn.execute(text("""
+                INSERT INTO site_bookings
+                    (user_id, ref, date_text, course, participants, raw, can_cancel, synced_at)
+                VALUES (:uid, :ref, :date_text, :course, :participants, :raw, :can_cancel, :synced_at)
+            """), dict(uid=user_id, ref=r.get("ref"), date_text=r.get("date_text"),
+                       course=r.get("course"), participants=r.get("participants"),
+                       raw=r.get("raw"), can_cancel=bool(r.get("can_cancel")),
+                       synced_at=now))
+
+
+def get_site_bookings(user_id: int) -> list:
+    with get_engine().connect() as conn:
+        rows = conn.execute(
+            text("SELECT * FROM site_bookings WHERE user_id = :uid ORDER BY id"),
+            {"uid": user_id}
+        ).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_site_booking(user_id: int, ref: str):
+    with get_engine().begin() as conn:
+        conn.execute(text(
+            "DELETE FROM site_bookings WHERE user_id = :uid AND ref = :ref"),
+            {"uid": user_id, "ref": ref})
 
 
 def update_status(booking_id: int, status: str, *,

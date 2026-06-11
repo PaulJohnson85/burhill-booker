@@ -235,6 +235,64 @@
       </table>
     </div>
     {% endif %}
+
+    <!-- Live bookings on the Burhill site -->
+    <div class="glass rounded-2xl overflow-hidden mt-8">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
+        <div>
+          <h2 class="text-sm font-bold text-white uppercase tracking-wider">On the Burhill site</h2>
+          {% if site_bookings %}
+          <p class="text-xs text-gray-500 mt-0.5">Last synced {{ site_bookings[0].synced_at[:16].replace('T', ' ') }}</p>
+          {% else %}
+          <p class="text-xs text-gray-500 mt-0.5">Not synced yet — refresh to pull your live bookings</p>
+          {% endif %}
+        </div>
+        <form method="post" action="/sync_site">
+          <button {% if site_busy %}disabled{% endif %}
+            class="text-xs text-gray-300 hover:text-white border border-white/10 hover:border-white/30 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+            {% if site_busy == 'syncing' %}Syncing…{% else %}Refresh from Burhill{% endif %}
+          </button>
+        </form>
+      </div>
+      {% if site_bookings %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-white/10">
+            <th class="px-5 py-3">Date &amp; time</th>
+            <th class="px-5 py-3">Course</th>
+            <th class="px-5 py-3">Ref</th>
+            <th class="px-5 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for sb in site_bookings %}
+          <tr>
+            <td class="px-5 py-4 text-gray-200">{{ sb.date_text }}</td>
+            <td class="px-5 py-4 text-gray-300">{{ sb.course }}</td>
+            <td class="px-5 py-4 text-gray-500 text-xs">{{ sb.ref }}</td>
+            <td class="px-5 py-4 text-right">
+              {% if site_busy == 'cancelling ' ~ sb.ref %}
+              <span class="text-xs text-yellow-300">Cancelling…</span>
+              {% elif sb.can_cancel %}
+              <form method="post" action="/cancel_site/{{ sb.ref }}" onsubmit="return confirm('Cancel {{ sb.date_text }} on the Burhill site?')">
+                <button {% if site_busy %}disabled{% endif %}
+                  class="text-xs text-amber-300 hover:text-amber-200 border border-amber-700/50 hover:border-amber-500 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+                  Cancel booking
+                </button>
+              </form>
+              {% else %}
+              <span class="text-xs text-gray-600">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% if site_busy %}
+    <script>setTimeout(() => location.reload(), 5000);</script>
+    {% endif %}
   </main>
 
   <!-- Add Booking Modal -->

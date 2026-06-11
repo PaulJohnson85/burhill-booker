@@ -136,9 +136,12 @@ def settings():
 @login_required
 def index():
     bookings = db.get_bookings_for_user(current_user.id)
+    site_bookings = db.get_site_bookings(current_user.id)
     return render_template(
         "index.html",
         bookings=bookings,
+        site_bookings=site_bookings,
+        site_busy=_SITE_BUSY.get(current_user.id),
         today=datetime.now().strftime("%Y-%m-%d"),
         booking_days=BOOKING_WINDOW["days_in_advance"],
         booking_time=BOOKING_WINDOW["open_time"],
@@ -180,6 +183,58 @@ def cancel(booking_id):
     if b and (b["user_id"] == current_user.id or current_user.is_admin):
         sched.cancel_booking(booking_id)
         db.update_status(booking_id, "cancelled", message="Cancelled by user")
+    return redirect(url_for("index"))
+
+
+# Per-user flag: "syncing" or "cancelling <ref>" while a site subprocess runs
+_SITE_BUSY = {}
+
+
+def _run_site_subprocess(user_id, args, label):
+    """Run a Playwright subprocess for site sync/cancel in a background thread."""
+    import subprocess, sys as _sys, threading, os as _os
+
+    def _run():
+        try:
+            result = subprocess.run(
+                [_sys.executable] + args,
+                capture_output=True, text=True, timeout=600,
+                cwd=_os.path.dirname(__file__),
+            )
+            if result.stdout:
+                print(f"[{label} stdout]\n{result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[{label} stderr]\n{result.stderr}", flush=True)
+        finally:
+            _SITE_BUSY.pop(user_id, None)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+@app.route("/sync_site", methods=["POST"])
+@login_required
+def sync_site():
+    """Refresh the dashboard's view of live Burhill bookings."""
+    if not _SITE_BUSY.get(current_user.id):
+        _SITE_BUSY[current_user.id] = "syncing"
+        _run_site_subprocess(
+            current_user.id,
+            ["run_sync.py", "--user-id", str(current_user.id)],
+            f"sync user {current_user.id}")
+    return redirect(url_for("index"))
+
+
+@app.route("/cancel_site/<ref>", methods=["POST"])
+@login_required
+def cancel_site(ref):
+    """Cancel a live Burhill booking by its ESP ref (from the synced list)."""
+    rows = db.get_site_bookings(current_user.id)
+    if any(r["ref"] == ref for r in rows) and not _SITE_BUSY.get(current_user.id):
+        _SITE_BUSY[current_user.id] = f"cancelling {ref}"
+        _run_site_subprocess(
+            current_user.id,
+            ["run_cancel.py", "--ref", ref, "--user-id", str(current_user.id)],
+            f"cancel ref {ref}")
     return redirect(url_for("index"))
 
 

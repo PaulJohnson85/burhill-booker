@@ -104,7 +104,12 @@ def _cancel_on_site(page, booking) -> bool:
         raise RuntimeError(f"No history entry found for booking on {date_str}"
                            f"{' at ' + slot_time if slot_time else ''}")
     _p(f"  Booking ref: {ref}")
+    return _cancel_ref(page, ref)
 
+
+def _cancel_ref(page, ref: str) -> bool:
+    """Submit the cancel form for a known booking ref (assumes we're on
+    book_history.php), confirm the Yes overlay, and verify."""
     try:
         how = page.evaluate("""(ref) => {
             const form = Array.from(document.forms).find(f => {
@@ -228,6 +233,39 @@ def _cancel_on_site(page, booking) -> bool:
     return True
 
 
+def _set_credentials_for_user(user: dict):
+    os.environ["BURHILL_USERNAME"] = user["burhill_user"]
+    os.environ["BURHILL_PASSWORD"] = crypto.decrypt(user["burhill_pass"])
+    from config import CREDENTIALS
+    CREDENTIALS["username"] = user["burhill_user"]
+    CREDENTIALS["password"] = crypto.decrypt(user["burhill_pass"])
+    _p(f"[run_cancel] credentials set for user {user.get('burhill_user')}")
+
+
+def _with_browser(fn):
+    """Launch the standard browser/context, run fn(page), return its result."""
+    with sync_playwright() as pw:
+        headless = os.environ.get("HEADLESS", "0") == "1"
+        browser = pw.chromium.launch(
+            headless=headless,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+        )
+        page = context.new_page()
+        try:
+            return fn(page)
+        finally:
+            context.close()
+            browser.close()
+
+
 def run(booking_id: int):
     _p(f"[run_cancel] start booking_id={booking_id}")
     row = db.get_booking(booking_id)
@@ -238,48 +276,27 @@ def run(booking_id: int):
     if row.get("user_id"):
         user = db.get_user_by_id(row["user_id"])
         if user and user.get("burhill_user") and user.get("burhill_pass"):
-            os.environ["BURHILL_USERNAME"] = user["burhill_user"]
-            os.environ["BURHILL_PASSWORD"] = crypto.decrypt(user["burhill_pass"])
-            from config import CREDENTIALS
-            CREDENTIALS["username"] = user["burhill_user"]
-            CREDENTIALS["password"] = crypto.decrypt(user["burhill_pass"])
-            _p(f"[run_cancel] credentials set for user {user.get('burhill_user')}")
+            _set_credentials_for_user(user)
 
     db.update_status(booking_id, "cancelling", message="Cancelling on Burhill site …")
 
+    def _do(page):
+        _login(page)
+        _p("[run_cancel] logged in")
+        return _cancel_on_site(page, row)
+
     try:
-        with sync_playwright() as pw:
-            headless = os.environ.get("HEADLESS", "0") == "1"
-            browser = pw.chromium.launch(
-                headless=headless,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 800},
-            )
-            page = context.new_page()
-            try:
-                _login(page)
-                _p("[run_cancel] logged in")
-                ok = _cancel_on_site(page, row)
-                if ok:
-                    db.update_status(booking_id, "cancelled",
-                                     message=f"Cancelled on Burhill site "
-                                             f"{datetime.now():%d/%m %H:%M}")
-                    _p(f"[run_cancel] ✅ booking {booking_id} cancelled")
-                else:
-                    db.update_status(booking_id, "booked",
-                                     message="Cancel attempt could not be verified — "
-                                             "check the Burhill site")
-                    sys.exit(1)
-            finally:
-                context.close()
-                browser.close()
+        ok = _with_browser(_do)
+        if ok:
+            db.update_status(booking_id, "cancelled",
+                             message=f"Cancelled on Burhill site "
+                                     f"{datetime.now():%d/%m %H:%M}")
+            _p(f"[run_cancel] ✅ booking {booking_id} cancelled")
+        else:
+            db.update_status(booking_id, "booked",
+                             message="Cancel attempt could not be verified — "
+                                     "check the Burhill site")
+            sys.exit(1)
     except Exception as e:
         import traceback
         _p(f"[run_cancel] EXCEPTION: {e}")
@@ -289,8 +306,46 @@ def run(booking_id: int):
         raise
 
 
+def run_by_ref(user_id: int, ref: str):
+    """Cancel a site booking identified by its ESP ref (dashboard flow)."""
+    _p(f"[run_cancel] start user_id={user_id} ref={ref}")
+    user = db.get_user_by_id(user_id)
+    if not user or not user.get("burhill_user") or not user.get("burhill_pass"):
+        print(f"User {user_id} has no Burhill credentials", file=sys.stderr, flush=True)
+        sys.exit(1)
+    _set_credentials_for_user(user)
+
+    def _do(page):
+        page.on("dialog", lambda dialog: (
+            _p(f"  [dialog: {dialog.type} '{dialog.message[:80]}' — accepting]"),
+            dialog.accept()))
+        _login(page)
+        _p("[run_cancel] logged in")
+        page.goto(f"{BASE_URL}/book_history.php", wait_until="domcontentloaded",
+                  timeout=30_000)
+        page.wait_for_timeout(800)
+        return _cancel_ref(page, ref)
+
+    ok = _with_browser(_do)
+    if ok:
+        db.delete_site_booking(user_id, ref)
+        _p(f"[run_cancel] ✅ ref {ref} cancelled for user {user_id}")
+    else:
+        _p(f"[run_cancel] ⚠️ ref {ref} could not be verified as cancelled")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--booking-id", type=int, required=True)
+    parser.add_argument("--booking-id", type=int)
+    parser.add_argument("--ref", type=str)
+    parser.add_argument("--user-id", type=int)
     args = parser.parse_args()
-    run(args.booking_id)
+    if args.ref:
+        if not args.user_id:
+            parser.error("--ref requires --user-id")
+        run_by_ref(args.user_id, args.ref)
+    elif args.booking_id:
+        run(args.booking_id)
+    else:
+        parser.error("provide --booking-id or --ref with --user-id")
