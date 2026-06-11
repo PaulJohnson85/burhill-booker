@@ -158,29 +158,22 @@ def _navigate_to_date(page, booking: dict = None):
         if label:
             print(f"    [{label}] → {page.url}")
 
-    # 1+2+3. Navigate directly to the course participants page, bypassing home page buttons
+    # 1. Navigate directly to book_start.php — the Make Booking button is in a hidden
+    #    side menu so we can't click it; its form action is book_start.php
     print(f"    [post-login] url={page.url}")
-    booking_type_url = (
-        f"{BASE_URL}/book_type.php?clubid={CLUB_ID}"
-        f"&BookingType=Golf+Club+Tee+Times"
-        f"&SubType={course_text.replace(' ', '+')}"
-    )
-    page.goto(booking_type_url, wait_until="domcontentloaded", timeout=30_000)
+    page.goto(f"{BASE_URL}/book_start.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(500)
-    print(f"    [direct nav] → {page.url}")
+    print(f"    [book_start] → {page.url}")
 
-    # If we landed on book_participants, great. If on book_type, click through.
-    if "book_type" in page.url or "book_participants" not in page.url:
-        # Try clicking Golf Club Tee Times link if present
-        link = page.locator('a[href*="Golf+Club+Tee+Times"]')
-        if link.count() > 0:
-            click_and_wait(link.first, "Golf Club Tee Times")
-        # Then click course link if present
-        course_link = page.locator(f'a[href*="{course_text.replace(" ", "+")}"]')
-        if course_link.count() > 0:
-            click_and_wait(course_link.first, f"Course: {course_text}")
+    # 2. Click "Golf Club Tee Times"
+    click_and_wait(page.locator('a[href*="Golf+Club+Tee+Times"]').first, "Golf Club Tee Times")
 
-    print(f"    [after nav] → {page.url}")
+    # 3. Click the chosen course
+    click_and_wait(
+        page.locator(f'a[href*="{course_text.replace(" ", "+")}"]').first,
+        f"Course: {course_text}")
+
+    print(f"    [after course select] → {page.url}")
 
     # 4. On book_participants.php: set player count and submit gotdata=1
     players = str(b["players"])
@@ -291,12 +284,11 @@ def _book_slot(page, slot_url: str) -> bool:
             continue
 
         if "book_confirm" in cur:
-            print("  On confirmation page — submitting confirm form …")
-            btn = page.locator(
-                'input[value*="Confirm" i], input[value*="Book" i], '
-                'input[type="submit"], button[type="submit"]'
-            ).first
-            btn.click(force=True)
+            print("  On confirmation page — clicking Make Booking inside iframe …")
+            # The final Make Booking button is inside wp_cybersource/el_userdetails.php iframe
+            iframe = page.frame_locator('iframe[src*="el_userdetails"]')
+            make_btn = iframe.locator('input[value*="Make Booking" i], button:has-text("Make Booking"), input[type="submit"]').first
+            make_btn.click(timeout=30_000)
             page.wait_for_load_state("domcontentloaded", timeout=30_000)
             page.wait_for_timeout(800)
             print(f"    [book_confirm submitted] → {page.url}")
