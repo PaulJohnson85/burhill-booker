@@ -301,7 +301,8 @@
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span> Booked</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span> Queued</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-300 inline-block"></span> On site</span>
-          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Open play</span>
+          <span class="flex items-center gap-1.5"><span class="text-amber-400 font-bold">N</span> Open play New</span>
+          <span class="flex items-center gap-1.5"><span class="text-amber-200 font-bold">O</span> Open play Old</span>
         </div>
       </div>
       <div class="grid md:grid-cols-2 gap-6 p-5">
@@ -338,7 +339,7 @@
                       {% if d.booked %}<span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>{% endif %}
                       {% if d.queued %}<span class="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>{% endif %}
                       {% if d.site %}<span class="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block"></span>{% endif %}
-                      {% if d.open_play %}<span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>{% endif %}
+                      {% if d.open_play_letter %}<span class="text-[9px] leading-none font-bold {% if d.open_play_letter == 'N' %}text-amber-400{% else %}text-amber-200{% endif %}">{{ d.open_play_letter }}</span>{% endif %}
                     </span>
                   </div>
                 </td>

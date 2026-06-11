@@ -174,6 +174,15 @@ def _build_calendar(bookings, site_bookings):
                     continue
                 key = f"{day:02d}/{m:02d}/{y}"
                 op = op_data.get(key) or {}
+                op_course = (op.get("open_play_course") or "").strip()
+                # Open play runs daily, alternating courses — show which one
+                op_letter = ""
+                if "new" in op_course.lower():
+                    op_letter = "N"
+                elif "old" in op_course.lower():
+                    op_letter = "O"
+                elif op_course:
+                    op_letter = op_course[0].upper()
                 row.append({
                     "day": day,
                     "is_today": (day == now.day and m == now.month and y == now.year),
@@ -182,6 +191,7 @@ def _build_calendar(bookings, site_bookings):
                     "booked": booked.get(key),
                     "site": site.get(key),
                     "open_play": op.get("open_play_course"),
+                    "open_play_letter": op_letter,
                     "open_play_times": op.get("open_play_times"),
                     "event": op.get("event"),
                 })
