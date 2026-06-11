@@ -110,150 +110,104 @@ def verify(page, query: str) -> dict:
     if _participants_state(page).get("curNum") != "2":
         _submit_participants_form(page, "1", "NumPeople submit")
 
-    # Type the name into the member field and clear the guest box
-    res = page.evaluate("""(q) => {
-        const out = [];
-        const t = document.querySelector('input[name="BookMemb1"]');
-        if (t) { t.value = q; out.push('BookMemb1=' + q); }
+    # Clear the guest box for player 2
+    page.evaluate("""() => {
         const g = document.querySelector('input[name="BookNonMemb1"]');
-        if (g) { g.checked = false; out.push('guest cleared'); }
-        return out.join(', ') || 'no member inputs found';
+        if (g) g.checked = false;
+    }""")
+
+    # Log the member-search inputs that the page JS works with
+    inputs_info = page.evaluate("""() => {
+        const out = [];
+        for (const id of ['memberenteredname1', 'BookMemb1', 'msname1',
+                          'membernotselected1', 'memberselected1']) {
+            const el = document.getElementById(id);
+            out.push(id + ': ' + (el ? el.outerHTML.slice(0, 200) : 'missing'));
+        }
+        return out;
+    }""")
+    for line in inputs_info:
+        _p(f"  [el] {line}")
+
+    # Watch the AJAX the autocomplete fires
+    ajax_log = []
+    def _on_response(resp):
+        u = resp.url
+        if ("e-s-p.com" in u and not u.endswith((".css", ".js", ".png", ".gif", ".jpg"))
+                and "book_participants.php?" != u.split("/")[-1]):
+            try:
+                body = resp.text()[:400]
+            except Exception:
+                body = "<unreadable>"
+            ajax_log.append({"url": u, "body": body})
+    page.on("response", _on_response)
+
+    # Type the name into the autocomplete box like a human
+    box = page.locator("#memberenteredname1")
+    if box.count() == 0:
+        box = page.locator('input[name="BookMemb1"]')
+    box.click(force=True)
+    box.type(query, delay=120)
+    page.wait_for_timeout(3000)
+
+    for a in ajax_log[-10:]:
+        _p(f"  [ajax] {a['url'][:150]} → {a['body'][:300]}")
+
+    # Look for suggestion elements and pick the first one matching the query
+    pick = page.evaluate("""(q) => {
+        const ql = q.toLowerCase();
+        const cands = [];
+        for (const el of Array.from(document.querySelectorAll(
+                'li, .ui-menu-item, .autocomplete-suggestion, [onclick*="set_memberselected"], a, div, td'))) {
+            const txt = ((el.innerText || '').trim());
+            const oc = el.getAttribute && (el.getAttribute('onclick') || '');
+            if ((oc && oc.includes('set_memberselected')) ||
+                (txt && txt.length < 60 && txt.toLowerCase().includes(ql) &&
+                 el.offsetParent !== null && el.children.length === 0)) {
+                cands.push({txt: txt.slice(0, 60), oc: (oc || '').slice(0, 120)});
+            }
+        }
+        return cands.slice(0, 15);
     }""", query)
-    _p(f"  [fill] {res}")
+    _p(f"  [suggestions] {json.dumps(pick)[:1200]}")
 
-    # mschk1 is not a form flag — on the real site it's the control that opens
-    # the member search UI via JS. Inspect it, then really click it.
-    info = page.evaluate("""() => {
-        const ms = document.querySelector('input[name="mschk1"]');
-        const out = {outer: ms ? ms.outerHTML.slice(0, 300) : null, handlers: []};
-        if (ms) {
-            for (const a of ['onclick', 'onchange', 'onmouseup']) {
-                const v = ms.getAttribute(a);
-                if (v) out.handlers.push(a + '=' + v.slice(0, 150));
+    clicked = page.evaluate("""(q) => {
+        const ql = q.toLowerCase();
+        for (const el of Array.from(document.querySelectorAll('*'))) {
+            const oc = el.getAttribute && el.getAttribute('onclick');
+            if (oc && oc.includes('set_memberselected')) { el.click(); return 'clicked onclick: ' + oc.slice(0, 100); }
+        }
+        for (const el of Array.from(document.querySelectorAll('li, .ui-menu-item, a, div'))) {
+            const txt = ((el.innerText || '').trim());
+            if (txt && txt.length < 60 && txt.toLowerCase().includes(ql) &&
+                el.offsetParent !== null && el.children.length === 0) {
+                el.click(); return 'clicked text: ' + txt;
             }
         }
-        return out;
-    }""")
-    _p(f"  [mschk1] {json.dumps(info)}")
+        return 'no-suggestion';
+    }""", query)
+    _p(f"  [pick] {clicked}")
+    page.wait_for_timeout(1000)
 
-    # Read the page JS that the checkbox drives — set_msp / set_membernotselected
-    js_src = page.evaluate("""() => {
-        const out = {};
-        for (const fn of ['set_msp', 'set_membernotselected', 'set_memberselected']) {
-            try { out[fn] = window[fn] ? window[fn].toString().slice(0, 600) : 'undefined'; }
-            catch (e) { out[fn] = 'error'; }
-        }
-        out.snippets = Array.from(document.querySelectorAll('script:not([src])'))
-            .map(s => s.textContent || '')
-            .filter(t => /msp|membsearch|membernot/i.test(t))
-            .map(t => t.replace(/\\s+/g, ' ').slice(0, 1200));
-        return out;
-    }""")
-    _p(f"  [page js] {json.dumps(js_src)[:2500]}")
+    # Read the resolved state — pref ends up in mschk1.value
+    resolved = page.evaluate("""() => ({
+        pref: (document.getElementById('mschk1') || {}).value || '',
+        checked: !!(document.getElementById('mschk1') || {}).checked,
+        msname: (document.getElementById('msname1') || {}).innerHTML || '',
+        entered: (document.getElementById('memberenteredname1') || {}).value || '',
+    })""")
+    _p(f"  [resolved] {json.dumps(resolved)}")
+    if resolved.get("pref"):
+        name = resolved.get("msname") or resolved.get("entered") or query
+        return {"url": page.url,
+                "matches": [f"{name} ({resolved['pref']})"],
+                "error": "",
+                "raw": {"resolved": resolved, "ajax": ajax_log[-5:]}}
 
-    popup = None
-    try:
-        with page.expect_popup(timeout=5_000) as pop_info:
-            # Real click so the onchange handler (set_msp) actually fires
-            page.locator('input[name="mschk1"]').click(force=True)
-        popup = pop_info.value
-        _p(f"  [popup opened] {popup.url}")
-    except Exception:
-        _p("  [no popup window after mschk1 click]")
-
-    # What did the handler change? Diff the member-related inputs
-    state = page.evaluate("""() => {
-        const out = {};
-        for (const el of Array.from(document.querySelectorAll('input'))) {
-            if (/msp|mschk|BookMemb|BookNonMemb/i.test(el.name || el.id || '')) {
-                out[(el.name || el.id) + ':' + el.type] =
-                    el.type === 'checkbox' ? (el.checked + '/' + el.value) : el.value;
-            }
-        }
-        return out;
-    }""")
-    _p(f"  [post-click state] {json.dumps(state)[:800]}")
-
-    # Now submit the participants form — with set_msp fired, the server should
-    # perform the member search rather than an exact lookup
-    _submit_participants_form(page, "2", "Member search submit")
-
-    target = popup if popup is not None else page
-    try:
-        target.wait_for_load_state("domcontentloaded", timeout=15_000)
-    except Exception:
-        pass
-    target.wait_for_timeout(1500)
-    _p(f"  [search UI] url={target.url}")
-    _p(f"  [frames] {[f.url for f in target.frames]}")
-    _dump_forms(target, "member search UI")
-
-    # If the search UI (popup or an iframe) has its own search box, run the
-    # search: fill the first text input and submit its form / press Enter.
-    contexts = [target.main_frame] + list(target.frames[1:]) if popup else list(page.frames)
-    for frame in contexts:
-        try:
-            ran = frame.evaluate("""(q) => {
-                const boxes = Array.from(document.querySelectorAll('input[type=text]'))
-                    .filter(i => !/^BookMemb/.test(i.name || ''));
-                if (!boxes.length) return 'no-box';
-                const box = boxes[0];
-                box.value = q;
-                const form = box.form;
-                if (form) {
-                    const btn = Array.from(form.elements).find(el =>
-                        el.type === 'submit' || el.type === 'image' || el.type === 'button');
-                    if (btn) { btn.click(); return 'searched via button ' + (btn.value || btn.name || '?'); }
-                    form.submit();
-                    return 'searched via form.submit';
-                }
-                box.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
-                return 'searched via Enter';
-            }""", query)
-            if ran != "no-box":
-                _p(f"  [search ran in {frame.url}] {ran}")
-                break
-        except Exception as e:
-            _p(f"  [frame search failed {frame.url}] {str(e)[:80]}")
-
-    target.wait_for_timeout(2500)
-    try:
-        target.wait_for_load_state("domcontentloaded", timeout=10_000)
-    except Exception:
-        pass
-    _p(f"  [after search] url={target.url} frames={[f.url for f in target.frames]}")
-    _dump_forms(target, "after member search")
-
-    # Capture from the popup/page and all its frames
-    captured = _capture_matches(target, query)
-    for frame in target.frames[1:]:
-        try:
-            sub = frame.evaluate("""(q) => {
-                const out = {options: [], links: [], body: ''};
-                for (const sel of Array.from(document.querySelectorAll('select')))
-                    for (const o of Array.from(sel.options || []))
-                        if (o.text) out.options.push(o.text.trim());
-                for (const a of Array.from(document.querySelectorAll('a, td[onclick], tr[onclick], button')))
-                    if (((a.innerText || '').trim())) out.links.push(a.innerText.trim().slice(0, 80));
-                out.body = ((document.body && document.body.innerText) || '').trim().slice(0, 600);
-                return out;
-            }""", query)
-            _p(f"  [frame capture {frame.url}] {json.dumps(sub)[:1000]}")
-            captured["clickables"].extend(
-                l for l in sub["links"] if query.lower() in l.lower())
-            captured["selects"].extend(
-                [{"name": "frame", "options": [{"text": t, "value": ""}]}
-                 for t in sub["options"] if query.lower() in t.lower()])
-            if not captured.get("body"):
-                captured["body"] = sub["body"]
-        except Exception:
-            continue
+    # Autocomplete didn't resolve a member — capture diagnostics
+    _p("  [no member resolved via autocomplete]")
+    captured = _capture_matches(page, query)
     _p(f"  [captured] {json.dumps(captured)[:1500]}")
-    if popup is not None:
-        try:
-            popup.close()
-        except Exception:
-            pass
 
     # Distil a friendly match list: select options or clickable names
     matches = []
