@@ -194,10 +194,13 @@ def _navigate_to_date(page, booking: dict = None):
     if "book_participants" in page.url:
         if int(players) > 1:
             for i in range(1, int(players)):
-                page.evaluate(f"""
-                    const cb = document.querySelector('input[name="BookNonMemb{i}"]');
-                    if (cb) cb.checked = true;
-                """)
+                try:
+                    page.evaluate(f"""
+                        const cb = document.querySelector('input[name="BookNonMemb{i}"]');
+                        if (cb) cb.checked = true;
+                    """)
+                except Exception:
+                    pass
         try:
             page.locator('form:has(input[name="gotdata"][value="2"])').evaluate("f => f.submit()")
         except Exception:
