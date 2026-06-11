@@ -2,15 +2,40 @@
 import os
 import sys
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.util import datetime_to_utc_timestamp
 
 import db
 from config import BOOKING_WINDOW
 
 _scheduler: BackgroundScheduler = None
+
+# Use UTC everywhere internally — avoids any server/DST ambiguity.
+# The 07:00 booking window is expressed in Europe/London time in app.py;
+# we convert it to UTC here before handing it to APScheduler.
+try:
+    from zoneinfo import ZoneInfo
+    _LONDON = ZoneInfo("Europe/London")
+except Exception:
+    _LONDON = timezone.utc
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Convert a naive datetime (assumed London local) to UTC-aware."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc)
+    # Attach London tz then convert to UTC
+    try:
+        return dt.replace(tzinfo=_LONDON).astimezone(timezone.utc)
+    except Exception:
+        return dt.replace(tzinfo=timezone.utc)
 
 
 def init_scheduler():
@@ -18,14 +43,14 @@ def init_scheduler():
     jobstores = {
         "default": SQLAlchemyJobStore(url=db._db_url())
     }
-    _scheduler = BackgroundScheduler(jobstores=jobstores, timezone="Europe/London")
+    _scheduler = BackgroundScheduler(jobstores=jobstores, timezone=timezone.utc)
     _scheduler.start()
 
     # Reschedule any pending/waiting bookings that survived a server restart
     for booking in db.get_all_bookings():
         if booking["status"] in ("pending", "waiting") and booking["opens_at"]:
             opens_at = datetime.fromisoformat(booking["opens_at"])
-            fire_at = _fire_time(opens_at)
+            fire_at  = _fire_time(opens_at)
             _add_job(booking["id"], fire_at)
 
 
@@ -36,17 +61,18 @@ def schedule_booking(booking_id: int, opens_at: datetime):
 
 def cancel_booking(booking_id: int):
     if _scheduler:
-        job_id = f"booking_{booking_id}"
         try:
-            _scheduler.remove_job(job_id)
+            _scheduler.remove_job(f"booking_{booking_id}")
         except Exception:
             pass
 
 
 def _fire_time(opens_at: datetime) -> datetime:
-    lead = BOOKING_WINDOW.get("lead_time_minutes", 2) if hasattr(BOOKING_WINDOW, "get") else 2
-    t = opens_at - timedelta(minutes=lead)
-    return max(t, datetime.now() + timedelta(seconds=5))
+    """Return UTC-aware fire time: opens_at minus lead, but never before now+5s."""
+    lead = BOOKING_WINDOW.get("lead_time_minutes", 2)
+    opens_utc = _to_utc(opens_at)
+    t = opens_utc - timedelta(minutes=lead)
+    return max(t, _now_utc() + timedelta(seconds=5))
 
 
 def _add_job(booking_id: int, fire_at: datetime):
@@ -61,8 +87,13 @@ def _add_job(booking_id: int, fire_at: datetime):
         replace_existing=True,
         misfire_grace_time=600,
     )
+    # Show London local time in the UI message
+    try:
+        local_time = fire_at.astimezone(_LONDON).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        local_time = fire_at.strftime("%Y-%m-%d %H:%M:%S")
     db.update_status(booking_id, "waiting",
-                     message=f"Scheduled to run at {fire_at:%Y-%m-%d %H:%M:%S}")
+                     message=f"Scheduled to run at {local_time} (London)")
 
 
 def _run_booking_subprocess(booking_id: int):
@@ -75,8 +106,6 @@ def _run_booking_subprocess(booking_id: int):
     )
     print(result.stdout)
     if result.returncode != 0:
-        # run_booking.py already called db.update_status("failed") itself,
-        # but if it crashed before that, set it here.
         row = db.get_booking(booking_id)
         if row and row["status"] not in ("failed", "booked"):
             db.update_status(booking_id, "failed",
