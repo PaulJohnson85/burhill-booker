@@ -142,12 +142,13 @@ def verify(page, query: str) -> dict:
             ajax_log.append({"url": u, "body": body})
     page.on("response", _on_response)
 
-    # Type the name into the autocomplete box like a human
-    box = page.locator("#memberenteredname1")
-    if box.count() == 0:
-        box = page.locator('input[name="BookMemb1"]')
-    box.click(force=True)
-    box.type(query, delay=120)
+    # The visible autocomplete box is the BookMemb1 text input (no id;
+    # #memberenteredname1 is a hidden field). Focus it and type real keys.
+    page.evaluate("""() => {
+        const el = document.querySelector('input[name="BookMemb1"]');
+        if (el) { el.scrollIntoView({block: 'center'}); el.focus(); el.value = ''; }
+    }""")
+    page.keyboard.type(query, delay=120)
     page.wait_for_timeout(3000)
 
     for a in ajax_log[-10:]:
