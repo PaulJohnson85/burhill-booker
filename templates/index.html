@@ -260,6 +260,7 @@
           <tr class="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-white/10">
             <th class="px-5 py-3">Date &amp; time</th>
             <th class="px-5 py-3">Course</th>
+            <th class="px-5 py-3">Players</th>
             <th class="px-5 py-3">Ref</th>
             <th class="px-5 py-3 text-right">Actions</th>
           </tr>
@@ -269,6 +270,7 @@
           <tr>
             <td class="px-5 py-4 text-gray-200">{{ sb.date_text }}</td>
             <td class="px-5 py-4 text-gray-300">{{ sb.course }}</td>
+            <td class="px-5 py-4 text-gray-300">{{ sb.participants }}</td>
             <td class="px-5 py-4 text-gray-500 text-xs">{{ sb.ref }}</td>
             <td class="px-5 py-4 text-right">
               {% if site_busy == 'cancelling ' ~ sb.ref %}

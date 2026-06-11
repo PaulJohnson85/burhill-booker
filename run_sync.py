@@ -63,8 +63,7 @@ def fetch_site_bookings(page) -> list:
             "ref": ref,
             "date_text": f"{date} {time_}".strip(),
             "course": info.get("HistCourse", ""),
-            "participants": info.get("HistParticipants")
-                            or info.get("HistPlayers") or "",
+            "participants": (info.get("HistPeople") or "").strip(),
             "raw": json.dumps(info)[:2000],
             "can_cancel": ref in cancel_refs,
         })
