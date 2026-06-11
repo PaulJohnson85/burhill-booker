@@ -276,7 +276,10 @@ def _book_slot(page, slot_url: str) -> bool:
         if "questionnaire" in cur:
             print("  Submitting questionnaire (declining extras) …")
             with page.expect_navigation(wait_until="load", timeout=30_000):
-                page.evaluate("document.querySelector('form').submit()")
+                try:
+                    page.evaluate("document.querySelector('form').submit()")
+                except Exception:
+                    pass  # context destroyed by navigation is expected
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(600)
             print(f"    [questionnaire] → {page.url}")
@@ -285,19 +288,22 @@ def _book_slot(page, slot_url: str) -> bool:
         if "book_confirm" in cur:
             print("  On confirmation page — submitting confirm form …")
             with page.expect_navigation(wait_until="load", timeout=30_000):
-                page.evaluate("""() => {
-                    const sel = [
-                        'input[value*="Confirm" i]',
-                        'input[value*="Book" i]',
-                        'input[value*="Submit" i]',
-                        'input[type="submit"]',
-                        'button[type="submit"]',
-                    ].join(',');
-                    const btn = document.querySelector(sel);
-                    if (btn && btn.form) { btn.form.submit(); }
-                    else if (btn) { btn.click(); }
-                    else { document.querySelector('form').submit(); }
-                }""")
+                try:
+                    page.evaluate("""() => {
+                        const sel = [
+                            'input[value*="Confirm" i]',
+                            'input[value*="Book" i]',
+                            'input[value*="Submit" i]',
+                            'input[type="submit"]',
+                            'button[type="submit"]',
+                        ].join(',');
+                        const btn = document.querySelector(sel);
+                        if (btn && btn.form) { btn.form.submit(); }
+                        else if (btn) { btn.click(); }
+                        else { document.querySelector('form').submit(); }
+                    }""")
+                except Exception:
+                    pass  # context destroyed by navigation is expected
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(800)
             print(f"    [book_confirm submitted] → {page.url}")
