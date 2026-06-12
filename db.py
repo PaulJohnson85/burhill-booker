@@ -154,7 +154,10 @@ def init_db():
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
                 "ALTER TABLE bookings ADD COLUMN partner_name TEXT",
-                "ALTER TABLE birdies ADD COLUMN course TEXT"):
+                "ALTER TABLE birdies ADD COLUMN course TEXT",
+                "ALTER TABLE users ADD COLUMN cdh_number TEXT",
+                "ALTER TABLE users ADD COLUMN handicap TEXT",
+                "ALTER TABLE users ADD COLUMN handicap_updated TEXT"):
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -210,6 +213,37 @@ def get_all_users() -> list:
             text("SELECT id, name, email, is_admin, created_at FROM users ORDER BY created_at")
         ).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+def update_user_cdh(user_id: int, cdh_number: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE users SET cdh_number = :c WHERE id = :id"),
+                     {"c": cdh_number, "id": user_id})
+
+
+def update_user_handicap(user_id: int, handicap: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+            UPDATE users SET handicap = :h, handicap_updated = :ts WHERE id = :id
+        """), {"h": handicap, "ts": datetime.now().isoformat(), "id": user_id})
+
+
+def users_with_cdh() -> list:
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, name, cdh_number, handicap FROM users
+            WHERE cdh_number IS NOT NULL AND cdh_number != ''
+        """)).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+
+def handicaps_by_name() -> dict:
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT name, handicap FROM users
+            WHERE handicap IS NOT NULL AND handicap != ''
+        """)).mappings().fetchall()
+        return {r["name"]: r["handicap"] for r in rows}
 
 
 # ── Bookings ─────────────────────────────────────────────────────────────────
@@ -299,7 +333,7 @@ def get_games(include_past: bool = False) -> list:
             ORDER BY g.date, g.time_window
         """)).mappings().fetchall()]
         players = [dict(r) for r in conn.execute(text("""
-            SELECT gp.*, u.name as user_name
+            SELECT gp.*, u.name as user_name, u.handicap as handicap
             FROM game_players gp LEFT JOIN users u ON gp.user_id = u.id
             ORDER BY gp.joined_at
         """)).mappings().fetchall()]
@@ -325,7 +359,7 @@ def get_game(game_id: int):
             return None
         g = dict(row)
         g["players"] = [dict(r) for r in conn.execute(text("""
-            SELECT gp.*, u.name as user_name
+            SELECT gp.*, u.name as user_name, u.handicap as handicap
             FROM game_players gp LEFT JOIN users u ON gp.user_id = u.id
             WHERE gp.game_id = :id ORDER BY gp.joined_at
         """), {"id": game_id}).mappings().fetchall()]

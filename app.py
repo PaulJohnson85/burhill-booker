@@ -128,7 +128,33 @@ def settings():
         return redirect(url_for("settings"))
     row = db.get_user_by_id(current_user.id)
     return render_template("settings.html", burhill_user=row.get("burhill_user", ""),
+                           cdh_number=row.get("cdh_number") or "",
+                           handicap=row.get("handicap") or "",
+                           handicap_updated=(row.get("handicap_updated") or "")[:16].replace("T", " "),
                            current_year=datetime.now().year)
+
+
+@app.route("/settings/cdh", methods=["POST"])
+@login_required
+def settings_cdh():
+    cdh = (request.form.get("cdh_number") or "").strip()
+    db.update_user_cdh(current_user.id, cdh)
+    flash("CDH number saved." if cdh else "CDH number cleared.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/refresh_handicaps", methods=["POST"])
+@login_required
+def refresh_handicaps():
+    """Run the WHS handicap refresh now (background)."""
+    if not _SITE_BUSY.get(current_user.id):
+        _SITE_BUSY[current_user.id] = "handicaps"
+        _run_site_subprocess(
+            current_user.id,
+            ["run_handicaps.py"],
+            "handicap refresh")
+        flash("Handicap refresh started — check back in a minute.", "success")
+    return redirect(url_for("settings"))
 
 
 @app.route("/openplay_upload", methods=["POST"])
@@ -473,10 +499,12 @@ def birdies():
             season_counts[b["player_name"]] = season_counts.get(b["player_name"], 0) + 1
     games_counts = db.games_played_counts()
     names = set(season_counts) | set(games_counts)
+    hcps = db.handicaps_by_name()
     merit = sorted(
         ({"name": n,
           "birdies": season_counts.get(n, 0),
-          "games": games_counts.get(n, 0)}
+          "games": games_counts.get(n, 0),
+          "handicap": hcps.get(n, "")}
          for n in names),
         key=lambda r: (-r["birdies"], -r["games"], r["name"]))
     return render_template(

@@ -85,6 +85,34 @@ def init_scheduler():
         misfire_grace_time=6 * 3600,
     )
 
+    # Refresh WHS handicaps weekly (Monday 06:00 London)
+    _scheduler.add_job(
+        _refresh_handicaps,
+        "cron",
+        day_of_week="mon",
+        hour=6,
+        minute=0,
+        timezone=_LONDON,
+        id="handicap_refresh",
+        replace_existing=True,
+        misfire_grace_time=6 * 3600,
+    )
+
+
+def _refresh_handicaps():
+    script = os.path.join(os.path.dirname(__file__), "run_handicaps.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, script],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.stdout:
+            print(f"[handicaps stdout]\n{result.stdout}", flush=True)
+        if result.stderr:
+            print(f"[handicaps stderr]\n{result.stderr}", flush=True)
+    except subprocess.TimeoutExpired:
+        print("[handicaps] timed out after 5 minutes", flush=True)
+
 
 def _fetch_open_play():
     # Subprocess: it drives a headless browser, keep it out of the web process

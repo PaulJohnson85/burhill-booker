@@ -119,6 +119,7 @@
               <th class="pb-2">Player</th>
               <th class="pb-2 text-right">🐦</th>
               <th class="pb-2 text-right">Games</th>
+              <th class="pb-2 text-right">HCP</th>
             </tr>
           </thead>
           <tbody>
@@ -130,6 +131,7 @@
               </td>
               <td class="py-1 text-right font-bold">{{ entry.birdies }}</td>
               <td class="py-1 text-right text-gray-400">{{ entry.games }}</td>
+              <td class="py-1 text-right text-gray-400">{{ entry.handicap or '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>
