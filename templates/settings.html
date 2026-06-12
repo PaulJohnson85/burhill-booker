@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Burhill Booker — Settings</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+  <meta name="theme-color" content="#0f1f0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Burhill">
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/static/sw.js');
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>body { background: #0f1f0f; }
   .glass { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
