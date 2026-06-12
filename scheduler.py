@@ -63,24 +63,38 @@ def init_scheduler():
         misfire_grace_time=3600,
     )
 
-    # Check the mailbox for emailed open play PDFs every 6 hours
+    # Drop the old mailbox-polling job if it survived in the jobstore
+    try:
+        _scheduler.remove_job("mail_import")
+    except Exception:
+        pass
+
+    # Fetch the open play PDF from the members' website daily
     _scheduler.add_job(
-        _check_mail,
+        _fetch_open_play,
         "interval",
-        hours=6,
-        next_run_time=_now_utc() + timedelta(minutes=2),
-        id="mail_import",
+        hours=24,
+        next_run_time=_now_utc() + timedelta(minutes=3),
+        id="openplay_fetch",
         replace_existing=True,
         misfire_grace_time=3600,
     )
 
 
-def _check_mail():
+def _fetch_open_play():
+    # Subprocess: it drives a headless browser, keep it out of the web process
+    script = os.path.join(os.path.dirname(__file__), "run_openplay_fetch.py")
     try:
-        from mail_import import check_mail
-        check_mail()
-    except Exception as e:
-        print(f"[mail_import] check failed: {e}", flush=True)
+        result = subprocess.run(
+            [sys.executable, script],
+            capture_output=True, text=True, timeout=300,
+        )
+        if result.stdout:
+            print(f"[openplay_fetch stdout]\n{result.stdout}", flush=True)
+        if result.stderr:
+            print(f"[openplay_fetch stderr]\n{result.stderr}", flush=True)
+    except subprocess.TimeoutExpired:
+        print("[openplay_fetch] timed out after 5 minutes", flush=True)
 
 
 def _cleanup_cancelled():
