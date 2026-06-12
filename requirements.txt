@@ -7,3 +7,4 @@ playwright>=1.44
 pdfplumber>=0.10
 tzdata
 cryptography
+Pillow>=10

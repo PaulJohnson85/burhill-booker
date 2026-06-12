@@ -127,6 +127,29 @@ def init_db():
             )
         """))
 
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS games (
+                id          {id_col},
+                creator_id  INTEGER REFERENCES users(id),
+                date        TEXT NOT NULL,
+                time_window TEXT,
+                course      TEXT,
+                spaces      INTEGER NOT NULL DEFAULT 4,
+                notes       TEXT,
+                status      TEXT NOT NULL DEFAULT 'open',
+                created_at  TEXT NOT NULL
+            )
+        """))
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS game_players (
+                id        {id_col},
+                game_id   INTEGER REFERENCES games(id),
+                user_id   INTEGER REFERENCES users(id),
+                joined_at TEXT NOT NULL
+            )
+        """))
+
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
@@ -245,6 +268,116 @@ def get_all_bookings() -> list:
             """)
         ).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Games (who's playing board) ──────────────────────────────────────────────
+
+def add_game(creator_id: int, date: str, time_window: str, course: str,
+             spaces: int, notes: str = "") -> int:
+    pg = _is_pg()
+    sql = """
+        INSERT INTO games (creator_id, date, time_window, course, spaces, notes,
+                           status, created_at)
+        VALUES (:creator_id, :date, :time_window, :course, :spaces, :notes,
+                'open', :created_at)
+    """
+    if pg:
+        sql += " RETURNING id"
+    params = dict(creator_id=creator_id, date=date, time_window=time_window,
+                  course=course, spaces=spaces, notes=notes,
+                  created_at=datetime.now().isoformat())
+    with get_engine().begin() as conn:
+        result = conn.execute(text(sql), params)
+        return result.fetchone()[0] if pg else result.lastrowid
+
+
+def get_games(include_past: bool = False) -> list:
+    with get_engine().connect() as conn:
+        games = [dict(r) for r in conn.execute(text("""
+            SELECT g.*, u.name as creator_name
+            FROM games g LEFT JOIN users u ON g.creator_id = u.id
+            ORDER BY g.date, g.time_window
+        """)).mappings().fetchall()]
+        players = [dict(r) for r in conn.execute(text("""
+            SELECT gp.*, u.name as user_name
+            FROM game_players gp LEFT JOIN users u ON gp.user_id = u.id
+            ORDER BY gp.joined_at
+        """)).mappings().fetchall()]
+    by_game = {}
+    for p in players:
+        by_game.setdefault(p["game_id"], []).append(p)
+    out = []
+    today = datetime.now().strftime("%Y-%m-%d")
+    for g in games:
+        # date stored as YYYY-MM-DD for sorting
+        if not include_past and g["date"] < today:
+            continue
+        g["players"] = by_game.get(g["id"], [])
+        out.append(g)
+    return out
+
+
+def get_game(game_id: int):
+    with get_engine().connect() as conn:
+        row = conn.execute(text("SELECT * FROM games WHERE id = :id"),
+                           {"id": game_id}).mappings().fetchone()
+        if not row:
+            return None
+        g = dict(row)
+        g["players"] = [dict(r) for r in conn.execute(text("""
+            SELECT gp.*, u.name as user_name
+            FROM game_players gp LEFT JOIN users u ON gp.user_id = u.id
+            WHERE gp.game_id = :id ORDER BY gp.joined_at
+        """), {"id": game_id}).mappings().fetchall()]
+        return g
+
+
+def join_game(game_id: int, user_id: int):
+    with get_engine().begin() as conn:
+        existing = conn.execute(text("""
+            SELECT 1 FROM game_players WHERE game_id = :g AND user_id = :u
+        """), {"g": game_id, "u": user_id}).fetchone()
+        if existing:
+            return
+        conn.execute(text("""
+            INSERT INTO game_players (game_id, user_id, joined_at)
+            VALUES (:g, :u, :ts)
+        """), {"g": game_id, "u": user_id, "ts": datetime.now().isoformat()})
+
+
+def leave_game(game_id: int, user_id: int):
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+            DELETE FROM game_players WHERE game_id = :g AND user_id = :u
+        """), {"g": game_id, "u": user_id})
+
+
+def delete_game(game_id: int):
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM game_players WHERE game_id = :id"),
+                     {"id": game_id})
+        conn.execute(text("DELETE FROM games WHERE id = :id"), {"id": game_id})
+
+
+def games_played_counts() -> dict:
+    """user name → number of past/today games they joined."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT u.name as name, COUNT(*) as total
+            FROM game_players gp
+            JOIN games g ON gp.game_id = g.id
+            LEFT JOIN users u ON gp.user_id = u.id
+            WHERE g.date <= :today
+            GROUP BY u.name
+        """), {"today": today}).mappings().fetchall()
+        return {r["name"]: r["total"] for r in rows if r["name"]}
+
+
+def update_birdie_photo(birdie_id: int, photo: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE birdies SET photo = :p WHERE id = :id"),
+                     {"p": photo, "id": birdie_id})
 
 
 # ── Open play schedule (imported via upload or email) ───────────────────────

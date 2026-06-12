@@ -465,10 +465,26 @@ def delete(booking_id):
 @app.route("/birdies")
 @login_required
 def birdies():
+    season = str(datetime.now().year)
+    all_birdies = db.get_birdies()
+    season_counts = {}
+    for b in all_birdies:
+        if b["date"].endswith(f"/{season}"):
+            season_counts[b["player_name"]] = season_counts.get(b["player_name"], 0) + 1
+    games_counts = db.games_played_counts()
+    names = set(season_counts) | set(games_counts)
+    merit = sorted(
+        ({"name": n,
+          "birdies": season_counts.get(n, 0),
+          "games": games_counts.get(n, 0)}
+         for n in names),
+        key=lambda r: (-r["birdies"], -r["games"], r["name"]))
     return render_template(
         "birdies.html",
-        birdies=db.get_birdies(),
+        birdies=all_birdies,
         leaderboard=db.birdie_leaderboard(),
+        merit=merit,
+        season=season,
         today=datetime.now().strftime("%Y-%m-%d"),
         user=current_user,
     )
@@ -489,7 +505,14 @@ def add_birdie():
         course = None
     if 1 <= hole <= 18:
         date_str = datetime.strptime(date_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
-        db.add_birdie(current_user.id, player, hole, date_str, course=course)
+        birdie_id = db.add_birdie(current_user.id, player, hole, date_str, course=course)
+        photo = request.files.get("photo")
+        if photo and photo.filename:
+            try:
+                fname = _save_birdie_photo(photo, birdie_id)
+                db.update_birdie_photo(birdie_id, fname)
+            except Exception as e:
+                flash(f"Birdie logged, but the photo failed: {str(e)[:100]}", "error")
     return redirect(url_for("birdies"))
 
 
@@ -500,6 +523,144 @@ def delete_birdie(birdie_id):
     if b and (b["user_id"] == current_user.id or current_user.is_admin):
         db.delete_birdie(birdie_id)
     return redirect(url_for("birdies"))
+
+
+# ── Birdie photos ────────────────────────────────────────────────────────────
+
+def _photo_dir() -> str:
+    base = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or os.path.dirname(__file__)
+    path = os.path.join(base, "birdie_photos")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _save_birdie_photo(file_storage, birdie_id: int) -> str:
+    """Resize and save an uploaded photo; returns the stored filename."""
+    from PIL import Image, ImageOps
+    img = Image.open(file_storage.stream)
+    img = ImageOps.exif_transpose(img)  # respect phone camera orientation
+    img.thumbnail((1200, 1200))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    fname = f"birdie_{birdie_id}.jpg"
+    img.save(os.path.join(_photo_dir(), fname), "JPEG", quality=82)
+    return fname
+
+
+@app.route("/birdie_photo/<int:birdie_id>")
+@login_required
+def birdie_photo(birdie_id):
+    from flask import send_from_directory, abort
+    b = db.get_birdie(birdie_id)
+    if not b or not b.get("photo"):
+        abort(404)
+    return send_from_directory(_photo_dir(), b["photo"])
+
+
+# ── Games (who's playing board) ──────────────────────────────────────────────
+
+@app.route("/games")
+@login_required
+def games():
+    return render_template(
+        "games.html",
+        games=db.get_games(),
+        today=datetime.now().strftime("%Y-%m-%d"),
+        max_date=_max_booking_date().strftime("%Y-%m-%d"),
+        user=current_user,
+    )
+
+
+@app.route("/games/add", methods=["POST"])
+@login_required
+def add_game():
+    f = request.form
+    date_iso = f.get("date") or ""
+    try:
+        datetime.strptime(date_iso, "%Y-%m-%d")
+    except ValueError:
+        flash("Pick a valid date.", "error")
+        return redirect(url_for("games"))
+    try:
+        spaces = max(2, min(4, int(f.get("spaces", 4))))
+    except ValueError:
+        spaces = 4
+    game_id = db.add_game(
+        creator_id=current_user.id,
+        date=date_iso,
+        time_window=(f.get("time_window") or "").strip()[:30],
+        course=f.get("course") or "Any",
+        spaces=spaces,
+        notes=(f.get("notes") or "").strip()[:200],
+    )
+    db.join_game(game_id, current_user.id)  # the creator is playing
+    return redirect(url_for("games"))
+
+
+@app.route("/games/join/<int:game_id>", methods=["POST"])
+@login_required
+def join_game(game_id):
+    g = db.get_game(game_id)
+    if g and len(g["players"]) < g["spaces"]:
+        db.join_game(game_id, current_user.id)
+    return redirect(url_for("games"))
+
+
+@app.route("/games/leave/<int:game_id>", methods=["POST"])
+@login_required
+def leave_game(game_id):
+    db.leave_game(game_id, current_user.id)
+    return redirect(url_for("games"))
+
+
+@app.route("/games/delete/<int:game_id>", methods=["POST"])
+@login_required
+def delete_game(game_id):
+    g = db.get_game(game_id)
+    if g and (g["creator_id"] == current_user.id or current_user.is_admin):
+        db.delete_game(game_id)
+    return redirect(url_for("games"))
+
+
+@app.route("/games/book/<int:game_id>", methods=["POST"])
+@login_required
+def book_game(game_id):
+    """Queue a tee-time booking for this game (creator only)."""
+    g = db.get_game(game_id)
+    if not g or g["creator_id"] != current_user.id:
+        return redirect(url_for("games"))
+
+    dt = datetime.strptime(g["date"], "%Y-%m-%d")
+    if dt > _max_booking_date():
+        flash("That date is beyond the known open play schedule — can't book yet.",
+              "error")
+        return redirect(url_for("games"))
+
+    import re as _re
+    window = g.get("time_window") or ""
+    parts = [p.strip() for p in window.split("-")]
+    def _valid(t):
+        return bool(_re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", t or ""))
+    preferred = parts[0] if parts and _valid(parts[0]) else "09:00"
+    latest = parts[1] if len(parts) > 1 and _valid(parts[1]) else None
+    date_str = dt.strftime("%d/%m/%Y")
+    course = g.get("course") or "Golf"
+    if course == "Any":
+        course = "Golf"
+    op = check_booking(date_str, course, preferred)
+    open_dt = dt - timedelta(days=BOOKING_WINDOW["days_in_advance"])
+    h, m = map(int, BOOKING_WINDOW["open_time"].split(":"))
+    opens_at = open_dt.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    booking_id = db.add_booking(
+        course=course, players=len(g["players"]), date=date_str,
+        preferred_time=preferred, opens_at=opens_at.isoformat(),
+        op_status=op["status"], op_message=op["message"],
+        user_id=current_user.id, latest_time=latest,
+    )
+    sched.schedule_booking(booking_id, opens_at)
+    flash(f"Tee time queued for {date_str} ({len(g['players'])} players).", "success")
+    return redirect(url_for("games"))
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────
