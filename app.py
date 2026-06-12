@@ -170,6 +170,17 @@ def openplay_upload():
 
 # ── Booking routes ───────────────────────────────────────────────────────────
 
+def _max_booking_date() -> "datetime":
+    """Bookings may be scheduled at most one calendar month ahead — the club
+    only publishes the open play calendar a month in advance."""
+    import calendar as _cal
+    now = datetime.now()
+    y = now.year + (1 if now.month == 12 else 0)
+    m = 1 if now.month == 12 else now.month + 1
+    day = min(now.day, _cal.monthrange(y, m)[1])
+    return datetime(y, m, day)
+
+
 def _build_calendar(bookings, site_bookings):
     """Two month grids (this month + next) with per-day markers:
     queued/booked portal bookings, live site bookings, open play days."""
@@ -253,6 +264,7 @@ def index():
         site_busy=_SITE_BUSY.get(current_user.id),
         calendar_months=_build_calendar(bookings, site_bookings),
         today=datetime.now().strftime("%Y-%m-%d"),
+        max_date=_max_booking_date().strftime("%Y-%m-%d"),
         booking_days=BOOKING_WINDOW["days_in_advance"],
         booking_time=BOOKING_WINDOW["open_time"],
         user=current_user,
@@ -269,6 +281,11 @@ def add():
     preferred_time = f["preferred_time"]
 
     dt       = datetime.strptime(date_iso, "%Y-%m-%d")
+    max_dt   = _max_booking_date()
+    if dt > max_dt:
+        flash(f"Bookings can be scheduled at most one month ahead "
+              f"(up to {max_dt:%d/%m/%Y}).", "error")
+        return redirect(url_for("index"))
     date_str = dt.strftime("%d/%m/%Y")
     open_dt  = dt - timedelta(days=BOOKING_WINDOW["days_in_advance"])
     h, m     = map(int, BOOKING_WINDOW["open_time"].split(":"))

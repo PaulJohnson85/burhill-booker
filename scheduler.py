@@ -69,15 +69,20 @@ def init_scheduler():
     except Exception:
         pass
 
-    # Fetch the open play PDF from the members' website daily
+    # Fetch the open play PDF from the members' website on the 1st of each
+    # month (the club publishes a month ahead). Also runs ~3 minutes after a
+    # deploy so a fresh build picks up the current schedule immediately.
     _scheduler.add_job(
         _fetch_open_play,
-        "interval",
-        hours=24,
+        "cron",
+        day=1,
+        hour=8,
+        minute=0,
+        timezone=_LONDON,
         next_run_time=_now_utc() + timedelta(minutes=3),
         id="openplay_fetch",
         replace_existing=True,
-        misfire_grace_time=3600,
+        misfire_grace_time=6 * 3600,
     )
 
 
