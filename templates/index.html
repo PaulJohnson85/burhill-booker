@@ -194,6 +194,10 @@
                 <span class="inline-flex items-center gap-1.5 bg-red-900/60 text-red-300 border border-red-700 text-xs font-semibold px-3 py-1 rounded-full">
                   <span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span> Failed
                 </span>
+              {% elif s == 'no_slots' %}
+                <span class="inline-flex items-center gap-1.5 bg-amber-900/50 text-amber-300 border border-amber-700 text-xs font-semibold px-3 py-1 rounded-full">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> No tee times
+                </span>
               {% elif s == 'cancelled' %}
                 <span class="inline-flex items-center gap-1.5 bg-gray-800 text-gray-400 border border-gray-600 text-xs font-semibold px-3 py-1 rounded-full">
                   Cancelled
@@ -234,7 +238,7 @@
                   </button>
                 </form>
                 {% endif %}
-                {% if b.status in ('booked', 'failed', 'cancelled') %}
+                {% if b.status in ('booked', 'failed', 'cancelled', 'no_slots') %}
                 <form method="post" action="/delete/{{ b.id }}" onsubmit="return confirm('Delete this record?')">
                   <button class="text-xs text-gray-500 hover:text-red-400 border border-white/10 hover:border-red-800 px-3 py-1.5 rounded-lg transition">
                     Delete
@@ -402,13 +406,13 @@
             <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Preferred Time</label>
             <input type="time" name="preferred_time" id="inp-time" required value="09:00"
               class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
-              onchange="checkOpenPlay()">
+              onchange="checkOpenPlay(); updateLatestDefault()">
           </div>
 
           <!-- Latest time (optional window end) -->
           <div>
             <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Latest Time <span class="normal-case text-gray-500">(optional)</span></label>
-            <input type="time" name="latest_time" id="inp-latest"
+            <input type="time" name="latest_time" id="inp-latest" value="11:00"
               class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
             <p class="text-[10px] text-gray-500 mt-1">Won't book any slot after this time</p>
           </div>
@@ -522,6 +526,18 @@
     }
 
     // Open play check
+    function updateLatestDefault() {
+      // Default the window to 2 hours after the preferred time; the user can
+      // still pick any later (or earlier-clearing) value afterwards.
+      const pref = document.getElementById('inp-time').value;
+      if (!pref) return;
+      const [h, m] = pref.split(':').map(Number);
+      const t = Math.min(h * 60 + m + 120, 23 * 60 + 59);
+      const hh = String(Math.floor(t / 60)).padStart(2, '0');
+      const mm = String(t % 60).padStart(2, '0');
+      document.getElementById('inp-latest').value = hh + ':' + mm;
+    }
+
     let verifyTimer;
     async function verifyMember() {
       const name = document.getElementById('inp-partner').value.trim();

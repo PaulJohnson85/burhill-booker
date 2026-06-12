@@ -72,7 +72,7 @@ def _cleanup_cancelled():
     cutoff = datetime.now() - timedelta(days=3)
     aged = 0
     for b in db.get_all_bookings():
-        if b["status"] != "failed":
+        if b["status"] not in ("failed", "no_slots"):
             continue
         ts = b.get("opens_at") or b.get("created_at")
         try:
@@ -151,7 +151,7 @@ def _run_booking_subprocess(booking_id: int):
 
     if result.returncode != 0:
         row = db.get_booking(booking_id)
-        if row and row["status"] not in ("failed", "booked"):
+        if row and row["status"] not in ("failed", "booked", "no_slots", "cancelled"):
             combined = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
             # Pass None when combined is empty — COALESCE keeps the last meaningful message
             msg = combined[-2000:] if combined else None

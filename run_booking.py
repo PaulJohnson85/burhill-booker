@@ -97,12 +97,12 @@ def run(booking_id: int, dry_run: bool = False):
                 slot_url = _find_slot(page, booking)
 
                 if slot_url is None:
-                    msg = f"No tee time available from {booking['preferred_time']}"
+                    msg = f"No tee times available from {booking['preferred_time']}"
                     if booking.get("latest_time"):
                         msg += f" to {booking['latest_time']}"
                     msg += "."
                     _p(f"[run_booking] {msg}")
-                    db.update_status(booking_id, "failed", message=msg)
+                    db.update_status(booking_id, "no_slots", message=msg)
                     notify.booking_failed(booking, msg)
                     sys.exit(1)
 
