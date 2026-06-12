@@ -90,13 +90,20 @@ def parse_pdf(path: str, year: int) -> dict:
 # ── Runtime lookup ─────────────────────────────────────────────────────────
 
 def _load_all() -> dict:
-    """Load every saved monthly JSON into a single dict keyed by DD/MM/YYYY."""
+    """Combined schedule keyed by DD/MM/YYYY: bundled JSON files overlaid with
+    entries imported at runtime (upload/email), which live in the database
+    because the container filesystem is wiped on each deploy."""
     combined = {}
     if os.path.isdir(DATA_DIR):
         for fname in os.listdir(DATA_DIR):
             if fname.endswith('.json'):
                 with open(os.path.join(DATA_DIR, fname)) as f:
                     combined.update(json.load(f))
+    try:
+        import db
+        combined.update(db.get_open_play_all())
+    except Exception:
+        pass  # standalone CLI use without a DB
     return combined
 
 

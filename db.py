@@ -112,6 +112,21 @@ def init_db():
             )
         """))
 
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS open_play_days (
+                date_key   TEXT PRIMARY KEY,
+                data       TEXT NOT NULL,
+                updated_at TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS processed_emails (
+                message_id   TEXT PRIMARY KEY,
+                processed_at TEXT
+            )
+        """))
+
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
@@ -230,6 +245,53 @@ def get_all_bookings() -> list:
             """)
         ).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Open play schedule (imported via upload or email) ───────────────────────
+
+def upsert_open_play(schedule: dict) -> int:
+    """Store/overwrite open play day entries. schedule: {DD/MM/YYYY: {...}}."""
+    import json as _json
+    with get_engine().begin() as conn:
+        for date_key, info in schedule.items():
+            conn.execute(text("DELETE FROM open_play_days WHERE date_key = :k"),
+                         {"k": date_key})
+            conn.execute(text("""
+                INSERT INTO open_play_days (date_key, data, updated_at)
+                VALUES (:k, :data, :ts)
+            """), {"k": date_key, "data": _json.dumps(info),
+                   "ts": datetime.now().isoformat()})
+    return len(schedule)
+
+
+def get_open_play_all() -> dict:
+    import json as _json
+    with get_engine().connect() as conn:
+        rows = conn.execute(
+            text("SELECT date_key, data FROM open_play_days")).fetchall()
+    out = {}
+    for k, data in rows:
+        try:
+            out[k] = _json.loads(data)
+        except Exception:
+            continue
+    return out
+
+
+def email_already_processed(message_id: str) -> bool:
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM processed_emails WHERE message_id = :m"),
+            {"m": message_id}).fetchone()
+        return row is not None
+
+
+def mark_email_processed(message_id: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+            INSERT INTO processed_emails (message_id, processed_at)
+            VALUES (:m, :ts)
+        """), {"m": message_id, "ts": datetime.now().isoformat()})
 
 
 # ── Birdies ─────────────────────────────────────────────────────────────────

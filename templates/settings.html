@@ -72,6 +72,33 @@
         </button>
       </form>
     </div>
+
+    <!-- Open play import -->
+    <div class="glass rounded-2xl p-7 mt-6">
+      <h2 class="text-sm font-bold text-white uppercase tracking-wider mb-2">Open Play Schedule</h2>
+      <p class="text-xs text-gray-500 mb-4">
+        The monthly PDF from Burhill is imported automatically from your email.
+        You can also upload one here manually.
+      </p>
+      <form method="post" action="/openplay_upload" enctype="multipart/form-data">
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">PDF File</label>
+          <input type="file" name="pdf" accept="application/pdf,.pdf" required
+            class="w-full text-sm text-gray-300 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0
+                   file:bg-green-700 file:text-white file:font-semibold hover:file:bg-green-600 file:transition">
+        </div>
+        <div class="mb-5">
+          <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Year</label>
+          <input type="number" name="year" min="2024" max="2035" value="{{ current_year }}"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-2.5 text-white
+                   focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500">
+        </div>
+        <button type="submit"
+          class="w-full bg-green-700 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition">
+          Import Open Play PDF
+        </button>
+      </form>
+    </div>
   </main>
 </body>
 </html>

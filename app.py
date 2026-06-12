@@ -127,7 +127,45 @@ def settings():
             flash("Burhill credentials updated.", "success")
         return redirect(url_for("settings"))
     row = db.get_user_by_id(current_user.id)
-    return render_template("settings.html", burhill_user=row.get("burhill_user", ""))
+    return render_template("settings.html", burhill_user=row.get("burhill_user", ""),
+                           current_year=datetime.now().year)
+
+
+@app.route("/openplay_upload", methods=["POST"])
+@login_required
+def openplay_upload():
+    """Manually import an open play PDF (e.g. forwarded from the club email)."""
+    f = request.files.get("pdf")
+    if not f or not f.filename.lower().endswith(".pdf"):
+        flash("Please choose a PDF file.", "error")
+        return redirect(url_for("settings"))
+    try:
+        year = int(request.form.get("year") or datetime.now().year)
+    except ValueError:
+        year = datetime.now().year
+
+    import tempfile
+    from open_play import parse_pdf
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        f.save(tmp.name)
+        path = tmp.name
+    try:
+        schedule = parse_pdf(path, year)
+        if schedule:
+            db.upsert_open_play(schedule)
+            first = next(iter(schedule))
+            flash(f"Imported {len(schedule)} open play day(s) "
+                  f"for {first.split('/')[1]}/{year}.", "success")
+        else:
+            flash("No open play table found in that PDF.", "error")
+    except Exception as e:
+        flash(f"Import failed: {str(e)[:150]}", "error")
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return redirect(url_for("settings"))
 
 
 # ── Booking routes ───────────────────────────────────────────────────────────

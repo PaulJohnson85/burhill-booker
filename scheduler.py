@@ -63,6 +63,25 @@ def init_scheduler():
         misfire_grace_time=3600,
     )
 
+    # Check the mailbox for emailed open play PDFs every 6 hours
+    _scheduler.add_job(
+        _check_mail,
+        "interval",
+        hours=6,
+        next_run_time=_now_utc() + timedelta(minutes=2),
+        id="mail_import",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
+
+def _check_mail():
+    try:
+        from mail_import import check_mail
+        check_mail()
+    except Exception as e:
+        print(f"[mail_import] check failed: {e}", flush=True)
+
 
 def _cleanup_cancelled():
     removed = db.delete_bookings_by_status("cancelled")
