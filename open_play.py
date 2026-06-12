@@ -161,10 +161,17 @@ def check_booking(date_str: str, course: str, preferred_time: str) -> dict:
         }
 
     op_times = info.get('open_play_times', '')
+    # "Golf" is the portal's "Any course" choice — name the real tee time
+    # course from the schedule instead of saying "Golf Course"
+    if course.strip().lower() in ('golf', 'any'):
+        subject = (f"Tee times are on the {tee_course} Course" if tee_course
+                   else "Tee times are available")
+    else:
+        subject = f"{course} Course is the tee time course"
     return {
         'status': 'ok',
         'message': (
-            f"{course} Course is the tee time course on {date_str} ({info['day']}). "
+            f"{subject} on {date_str} ({info['day']}). "
             f"Open play is on {op_course} ({op_times})."
         ),
         'day_info': info,
