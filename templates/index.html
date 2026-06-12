@@ -102,7 +102,7 @@
   </header>
 
   <!-- Stats bar -->
-  <div class="px-6 py-4 flex gap-4 text-sm">
+  <div class="px-6 py-4 flex gap-4 text-sm overflow-x-auto whitespace-nowrap">
     {% set counts = namespace(pending=0, waiting=0, running=0, booked=0, failed=0) %}
     {% for b in bookings %}
       {% if b.status == 'pending'   %}{% set counts.pending  = counts.pending  + 1 %}{% endif %}
@@ -144,7 +144,8 @@
     </div>
     {% else %}
     <div class="glass rounded-2xl overflow-hidden mt-2">
-      <table class="w-full text-sm">
+      <div class="overflow-x-auto">
+      <table class="w-full min-w-[760px] text-sm">
         <thead>
           <tr class="border-b border-white/10 text-gray-400 text-xs uppercase tracking-wider">
             <th class="text-left px-5 py-3">Date</th>
@@ -246,6 +247,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
     {% endif %}
 
@@ -268,7 +270,8 @@
         </form>
       </div>
       {% if site_bookings %}
-      <table class="w-full text-sm">
+      <div class="overflow-x-auto">
+      <table class="w-full min-w-[560px] text-sm">
         <thead>
           <tr class="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-white/10">
             <th class="px-5 py-3">Date &amp; time</th>
@@ -303,6 +306,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% endif %}
     </div>
 
@@ -322,7 +326,8 @@
         {% for month in calendar_months %}
         <div>
           <h3 class="text-sm font-semibold text-gray-200 mb-3 text-center">{{ month.name }}</h3>
-          <table class="w-full text-center text-xs">
+          <div class="overflow-x-auto">
+          <table class="w-full min-w-[320px] text-center text-xs">
             <thead>
               <tr class="text-gray-500">
                 <th class="py-1 font-medium">Mo</th><th class="py-1 font-medium">Tu</th><th class="py-1 font-medium">We</th>
@@ -362,6 +367,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
         </div>
         {% endfor %}
       </div>
