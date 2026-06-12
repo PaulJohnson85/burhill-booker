@@ -171,13 +171,26 @@ def openplay_upload():
 # ── Booking routes ───────────────────────────────────────────────────────────
 
 def _max_booking_date() -> "datetime":
-    """Bookings may be scheduled at most one calendar month ahead — the club
-    only publishes the open play calendar a month in advance."""
+    """Bookings may only be scheduled while the open play schedule is known —
+    otherwise the booker can't tell whether the course is open play at the
+    chosen time. The cap is the latest date in the imported schedule
+    (falling back to one month ahead if no data is loaded at all)."""
+    from open_play import _load_all
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    latest = None
+    for key in _load_all():
+        try:
+            d = datetime.strptime(key, "%d/%m/%Y")
+        except ValueError:
+            continue
+        if d >= today and (latest is None or d > latest):
+            latest = d
+    if latest:
+        return latest
     import calendar as _cal
-    now = datetime.now()
-    y = now.year + (1 if now.month == 12 else 0)
-    m = 1 if now.month == 12 else now.month + 1
-    day = min(now.day, _cal.monthrange(y, m)[1])
+    y = today.year + (1 if today.month == 12 else 0)
+    m = 1 if today.month == 12 else today.month + 1
+    day = min(today.day, _cal.monthrange(y, m)[1])
     return datetime(y, m, day)
 
 
@@ -283,8 +296,9 @@ def add():
     dt       = datetime.strptime(date_iso, "%Y-%m-%d")
     max_dt   = _max_booking_date()
     if dt > max_dt:
-        flash(f"Bookings can be scheduled at most one month ahead "
-              f"(up to {max_dt:%d/%m/%Y}).", "error")
+        flash(f"The open play schedule is only known up to {max_dt:%d/%m/%Y} — "
+              f"bookings beyond that can't check for open play. The next "
+              f"calendar is imported on the 1st of the month.", "error")
         return redirect(url_for("index"))
     date_str = dt.strftime("%d/%m/%Y")
     open_dt  = dt - timedelta(days=BOOKING_WINDOW["days_in_advance"])
