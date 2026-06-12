@@ -595,9 +595,14 @@ def birdie_photo(birdie_id):
 
 # ── Games (who's playing board) ──────────────────────────────────────────────
 
+GAMES_ENABLED = os.environ.get("GAMES_ENABLED", "0") == "1"
+
+
 @app.route("/games")
 @login_required
 def games():
+    if not GAMES_ENABLED:
+        return redirect(url_for("index"))
     return render_template(
         "games.html",
         games=db.get_games(),
