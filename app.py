@@ -476,6 +476,14 @@ def cancel_on_site(booking_id):
     return redirect(url_for("index"))
 
 
+@app.route("/bookings/clear", methods=["POST"])
+@login_required
+def clear_finished():
+    n = db.clear_finished_bookings(current_user.id)
+    flash(f"Cleared {n} finished booking record(s).", "success")
+    return redirect(url_for("index"))
+
+
 @app.route("/delete/<int:booking_id>", methods=["POST"])
 @login_required
 def delete(booking_id):

@@ -119,13 +119,15 @@
 
   <!-- Stats bar -->
   <div class="px-4 sm:px-6 py-4 flex gap-4 text-sm overflow-x-auto whitespace-nowrap">
-    {% set counts = namespace(pending=0, waiting=0, running=0, booked=0, failed=0) %}
+    {% set counts = namespace(pending=0, waiting=0, running=0, booked=0, failed=0, no_slots=0, cancelled=0) %}
     {% for b in bookings %}
       {% if b.status == 'pending'   %}{% set counts.pending  = counts.pending  + 1 %}{% endif %}
       {% if b.status == 'waiting'   %}{% set counts.waiting  = counts.waiting  + 1 %}{% endif %}
       {% if b.status == 'running'   %}{% set counts.running  = counts.running  + 1 %}{% endif %}
       {% if b.status == 'booked'    %}{% set counts.booked   = counts.booked   + 1 %}{% endif %}
       {% if b.status == 'failed'    %}{% set counts.failed   = counts.failed   + 1 %}{% endif %}
+      {% if b.status == 'no_slots'  %}{% set counts.no_slots  = counts.no_slots  + 1 %}{% endif %}
+      {% if b.status == 'cancelled' %}{% set counts.cancelled = counts.cancelled + 1 %}{% endif %}
     {% endfor %}
     <div class="glass rounded-lg px-4 py-2 flex items-center gap-2">
       <span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>
@@ -137,6 +139,14 @@
       <span class="text-gray-400">Booked</span>
       <span class="font-bold text-white">{{ site_bookings|length if site_bookings else counts.booked }}</span>
     </div>
+    {% if counts.failed > 0 or counts.no_slots > 0 or counts.cancelled > 0 %}
+    <form method="post" action="/bookings/clear" class="ml-auto"
+          onsubmit="return confirm('Remove all failed, cancelled and no-tee-time records?')">
+      <button class="glass rounded-lg px-4 py-2 text-gray-400 hover:text-white transition whitespace-nowrap">
+        🧹 Clear finished
+      </button>
+    </form>
+    {% endif %}
     {% if counts.failed > 0 %}
     <div class="glass rounded-lg px-4 py-2 flex items-center gap-2">
       <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>

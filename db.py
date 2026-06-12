@@ -585,6 +585,16 @@ def update_status(booking_id: int, status: str, *,
                    slot_time=slot_time, booked_at=booked_at, id=booking_id))
 
 
+def clear_finished_bookings(user_id: int) -> int:
+    """Delete this user's failed / cancelled / no_slots booking records."""
+    with get_engine().begin() as conn:
+        result = conn.execute(text("""
+            DELETE FROM bookings
+            WHERE user_id = :uid AND status IN ('failed', 'cancelled', 'no_slots')
+        """), {"uid": user_id})
+        return result.rowcount or 0
+
+
 def delete_bookings_by_status(status: str) -> int:
     """Delete all bookings with the given status. Returns the row count."""
     with get_engine().begin() as conn:
