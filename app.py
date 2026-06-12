@@ -415,9 +415,12 @@ def add_birdie():
     except ValueError:
         hole = 0
     date_iso = f.get("date") or datetime.now().strftime("%Y-%m-%d")
+    course = f.get("course")
+    if course not in ("Old", "New"):
+        course = None
     if 1 <= hole <= 18:
         date_str = datetime.strptime(date_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
-        db.add_birdie(current_user.id, player, hole, date_str)
+        db.add_birdie(current_user.id, player, hole, date_str, course=course)
     return redirect(url_for("birdies"))
 
 

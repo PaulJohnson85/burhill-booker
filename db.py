@@ -104,6 +104,7 @@ def init_db():
                 id          {id_col},
                 user_id     INTEGER REFERENCES users(id),
                 player_name TEXT NOT NULL,
+                course      TEXT,
                 hole        INTEGER NOT NULL,
                 date        TEXT NOT NULL,
                 photo       TEXT,
@@ -114,7 +115,8 @@ def init_db():
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
-                "ALTER TABLE bookings ADD COLUMN partner_name TEXT"):
+                "ALTER TABLE bookings ADD COLUMN partner_name TEXT",
+                "ALTER TABLE birdies ADD COLUMN course TEXT"):
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -232,16 +234,17 @@ def get_all_bookings() -> list:
 
 # ── Birdies ─────────────────────────────────────────────────────────────────
 
-def add_birdie(user_id: int, player_name: str, hole: int, date: str) -> int:
+def add_birdie(user_id: int, player_name: str, hole: int, date: str,
+               course: str = None) -> int:
     pg = _is_pg()
     sql = """
-        INSERT INTO birdies (user_id, player_name, hole, date, created_at)
-        VALUES (:user_id, :player_name, :hole, :date, :created_at)
+        INSERT INTO birdies (user_id, player_name, course, hole, date, created_at)
+        VALUES (:user_id, :player_name, :course, :hole, :date, :created_at)
     """
     if pg:
         sql += " RETURNING id"
-    params = dict(user_id=user_id, player_name=player_name, hole=hole,
-                  date=date, created_at=datetime.now().isoformat())
+    params = dict(user_id=user_id, player_name=player_name, course=course,
+                  hole=hole, date=date, created_at=datetime.now().isoformat())
     with get_engine().begin() as conn:
         result = conn.execute(text(sql), params)
         return result.fetchone()[0] if pg else result.lastrowid
