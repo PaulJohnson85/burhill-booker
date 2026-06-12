@@ -98,6 +98,19 @@ def init_db():
             )
         """))
 
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS birdies (
+                id          {id_col},
+                user_id     INTEGER REFERENCES users(id),
+                player_name TEXT NOT NULL,
+                hole        INTEGER NOT NULL,
+                date        TEXT NOT NULL,
+                photo       TEXT,
+                created_at  TEXT NOT NULL
+            )
+        """))
+
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
                 "ALTER TABLE bookings ADD COLUMN latest_time TEXT",
@@ -214,6 +227,54 @@ def get_all_bookings() -> list:
                 ORDER BY b.date, b.preferred_time
             """)
         ).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── Birdies ─────────────────────────────────────────────────────────────────
+
+def add_birdie(user_id: int, player_name: str, hole: int, date: str) -> int:
+    pg = _is_pg()
+    sql = """
+        INSERT INTO birdies (user_id, player_name, hole, date, created_at)
+        VALUES (:user_id, :player_name, :hole, :date, :created_at)
+    """
+    if pg:
+        sql += " RETURNING id"
+    params = dict(user_id=user_id, player_name=player_name, hole=hole,
+                  date=date, created_at=datetime.now().isoformat())
+    with get_engine().begin() as conn:
+        result = conn.execute(text(sql), params)
+        return result.fetchone()[0] if pg else result.lastrowid
+
+
+def get_birdies() -> list:
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT b.*, u.name as logged_by
+            FROM birdies b LEFT JOIN users u ON b.user_id = u.id
+            ORDER BY b.date DESC, b.created_at DESC
+        """)).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_birdie(birdie_id: int) -> Optional[dict]:
+    with get_engine().connect() as conn:
+        row = conn.execute(text("SELECT * FROM birdies WHERE id = :id"),
+                           {"id": birdie_id}).mappings().fetchone()
+        return dict(row) if row else None
+
+
+def delete_birdie(birdie_id: int):
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM birdies WHERE id = :id"), {"id": birdie_id})
+
+
+def birdie_leaderboard() -> list:
+    with get_engine().connect() as conn:
+        rows = conn.execute(text("""
+            SELECT player_name, COUNT(*) as total
+            FROM birdies GROUP BY player_name ORDER BY total DESC, player_name
+        """)).mappings().fetchall()
         return [dict(r) for r in rows]
 
 

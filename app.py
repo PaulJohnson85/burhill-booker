@@ -391,6 +391,45 @@ def delete(booking_id):
     return redirect(url_for("index"))
 
 
+# ── Birdies ──────────────────────────────────────────────────────────────────
+
+@app.route("/birdies")
+@login_required
+def birdies():
+    return render_template(
+        "birdies.html",
+        birdies=db.get_birdies(),
+        leaderboard=db.birdie_leaderboard(),
+        today=datetime.now().strftime("%Y-%m-%d"),
+        user=current_user,
+    )
+
+
+@app.route("/birdies/add", methods=["POST"])
+@login_required
+def add_birdie():
+    f = request.form
+    player = (f.get("player_name") or "").strip() or current_user.name
+    try:
+        hole = int(f.get("hole", 0))
+    except ValueError:
+        hole = 0
+    date_iso = f.get("date") or datetime.now().strftime("%Y-%m-%d")
+    if 1 <= hole <= 18:
+        date_str = datetime.strptime(date_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+        db.add_birdie(current_user.id, player, hole, date_str)
+    return redirect(url_for("birdies"))
+
+
+@app.route("/birdies/delete/<int:birdie_id>", methods=["POST"])
+@login_required
+def delete_birdie(birdie_id):
+    b = db.get_birdie(birdie_id)
+    if b and (b["user_id"] == current_user.id or current_user.is_admin):
+        db.delete_birdie(birdie_id)
+    return redirect(url_for("birdies"))
+
+
 # ── Admin ────────────────────────────────────────────────────────────────────
 
 @app.route("/admin")
