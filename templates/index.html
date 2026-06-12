@@ -334,7 +334,6 @@
         <div class="flex items-center gap-4 text-[11px] text-gray-400">
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span> Booked</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span> Queued</span>
-          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-300 inline-block"></span> Live at Burhill</span>
           <span class="flex items-center gap-1.5"><span class="text-amber-400 font-bold">N</span> Open play New</span>
           <span class="flex items-center gap-1.5"><span class="text-amber-200 font-bold">O</span> Open play Old</span>
         </div>
@@ -361,7 +360,6 @@
                 {% set tip = [] %}
                 {% if d.booked %}{% set _ = tip.append('Booked ' ~ d.booked|join(', ')) %}{% endif %}
                 {% if d.queued %}{% set _ = tip.append('Queued ' ~ d.queued|join(', ')) %}{% endif %}
-                {% if d.site %}{% set _ = tip.append('Live at Burhill ' ~ d.site|join(', ')) %}{% endif %}
                 {% if d.open_play %}{% set _ = tip.append('Open play: ' ~ d.open_play ~ (' ' ~ d.open_play_times if d.open_play_times else '')) %}{% endif %}
                 {% if d.event %}{% set _ = tip.append(d.event) %}{% endif %}
                 <td class="py-1">
@@ -373,7 +371,6 @@
                     <span class="flex gap-0.5 mt-0.5">
                       {% if d.booked %}<span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>{% endif %}
                       {% if d.queued %}<span class="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>{% endif %}
-                      {% if d.site %}<span class="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block"></span>{% endif %}
                       {% if d.open_play_letter %}<span class="text-[9px] leading-none font-bold {% if d.open_play_letter == 'N' %}text-amber-400{% else %}text-amber-200{% endif %}">{{ d.open_play_letter }}</span>{% endif %}
                     </span>
                   </div>
