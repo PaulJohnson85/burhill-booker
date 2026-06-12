@@ -44,10 +44,10 @@
   </style>
 </head>
 
-<body class="min-h-screen text-gray-100 font-sans">
+<body class="min-h-screen text-gray-100 font-sans overflow-x-hidden">
 
   <!-- Header -->
-  <header class="border-b border-white/10 px-6 py-4 flex items-center justify-between">
+  <header class="border-b border-white/10 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-y-3">
     <div class="flex items-center gap-3">
       <span class="text-3xl">⛳</span>
       <div>
@@ -115,7 +115,7 @@
   {% endwith %}
 
   <!-- Stats bar -->
-  <div class="px-6 py-4 flex gap-4 text-sm overflow-x-auto whitespace-nowrap">
+  <div class="px-4 sm:px-6 py-4 flex gap-4 text-sm overflow-x-auto whitespace-nowrap">
     {% set counts = namespace(pending=0, waiting=0, running=0, booked=0, failed=0) %}
     {% for b in bookings %}
       {% if b.status == 'pending'   %}{% set counts.pending  = counts.pending  + 1 %}{% endif %}
@@ -144,7 +144,7 @@
   </div>
 
   <!-- Booking table -->
-  <main class="px-6 pb-10">
+  <main class="px-4 sm:px-6 pb-10">
     {% if not bookings %}
     <div class="glass rounded-2xl p-16 text-center mt-4">
       <div class="text-6xl mb-4">🏌️</div>
@@ -331,14 +331,14 @@
     <div class="glass rounded-2xl overflow-hidden mt-8">
       <div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
         <h2 class="text-sm font-bold text-white uppercase tracking-wider">Calendar</h2>
-        <div class="flex items-center gap-4 text-[11px] text-gray-400">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-400">
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span> Booked</span>
           <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span> Queued</span>
           <span class="flex items-center gap-1.5"><span class="text-amber-400 font-bold">N</span> Open play New</span>
           <span class="flex items-center gap-1.5"><span class="text-amber-200 font-bold">O</span> Open play Old</span>
         </div>
       </div>
-      <div class="grid md:grid-cols-2 gap-6 p-5">
+      <div class="grid md:grid-cols-2 gap-6 p-5 overflow-x-auto">
         {% for month in calendar_months %}
         <div>
           <h3 class="text-sm font-semibold text-gray-200 mb-3 text-center">{{ month.name }}</h3>
