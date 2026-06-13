@@ -149,6 +149,13 @@ def init_db():
                 joined_at TEXT NOT NULL
             )
         """))
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS birdie_players (
+                id         {id_col},
+                name       TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """))
 
     # Separate transactions — an ALTER TABLE failure must not roll back the rest
     for ddl in ("ALTER TABLE bookings ADD COLUMN user_id INTEGER",
@@ -477,6 +484,41 @@ def add_birdie(user_id: int, player_name: str, hole: int, date: str,
     with get_engine().begin() as conn:
         result = conn.execute(text(sql), params)
         return result.fetchone()[0] if pg else result.lastrowid
+
+
+def add_player_name(name: str):
+    """Add a name to the birdie player roster (idempotent)."""
+    name = (name or "").strip()
+    if not name:
+        return
+    with get_engine().begin() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM birdie_players WHERE LOWER(name) = LOWER(:n)"),
+            {"n": name}).fetchone()
+        if not exists:
+            conn.execute(text("""
+                INSERT INTO birdie_players (name, created_at) VALUES (:n, :ts)
+            """), {"n": name, "ts": datetime.now().isoformat()})
+
+
+def get_player_names() -> list:
+    """Roster names plus any names already used on birdies, de-duplicated."""
+    with get_engine().connect() as conn:
+        roster = [r[0] for r in conn.execute(
+            text("SELECT name FROM birdie_players")).fetchall()]
+        used = [r[0] for r in conn.execute(
+            text("SELECT DISTINCT player_name FROM birdies")).fetchall()]
+    seen, out = set(), []
+    for n in sorted(set(roster) | set(used), key=str.lower):
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            out.append(n)
+    return out
+
+
+def delete_player_name(name: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM birdie_players WHERE name = :n"), {"n": name})
 
 
 def get_birdies() -> list:

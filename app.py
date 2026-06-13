@@ -84,6 +84,9 @@ def register():
             burhill_user=burhill_user,
             burhill_pass_encrypted=crypto.encrypt(burhill_pass),
         )
+        cdh = (f.get("cdh_number") or "").strip()
+        if cdh:
+            db.update_user_cdh(user_id, cdh)
         row = db.get_user_by_id(user_id)
         login_user(User(row), remember=True)
         flash(f"Welcome, {name}! Your account is ready.", "success")
@@ -521,6 +524,7 @@ def birdies():
         leaderboard=db.birdie_leaderboard(),
         merit=merit,
         season=season,
+        player_names=db.get_player_names(),
         today=datetime.now().strftime("%Y-%m-%d"),
         user=current_user,
     )
@@ -542,6 +546,7 @@ def add_birdie():
     if 1 <= hole <= 18:
         date_str = datetime.strptime(date_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
         birdie_id = db.add_birdie(current_user.id, player, hole, date_str, course=course)
+        db.add_player_name(player)  # remember the name for autocomplete
         photo = request.files.get("photo")
         if photo and photo.filename:
             try:
@@ -549,6 +554,23 @@ def add_birdie():
                 db.update_birdie_photo(birdie_id, fname)
             except Exception as e:
                 flash(f"Birdie logged, but the photo failed: {str(e)[:100]}", "error")
+    return redirect(url_for("birdies"))
+
+
+@app.route("/birdies/players/add", methods=["POST"])
+@login_required
+def add_player_name():
+    name = (request.form.get("name") or "").strip()
+    if name:
+        db.add_player_name(name)
+        flash(f"Added {name} to the player list.", "success")
+    return redirect(url_for("birdies"))
+
+
+@app.route("/birdies/players/delete", methods=["POST"])
+@login_required
+def delete_player_name():
+    db.delete_player_name((request.form.get("name") or "").strip())
     return redirect(url_for("birdies"))
 
 
