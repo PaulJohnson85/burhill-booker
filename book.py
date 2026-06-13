@@ -437,9 +437,35 @@ def _navigate_to_date(page, booking: dict = None):
             seen.add(c)
             candidates.append(c)
 
-    # Poll for up to 15s — the calendar may still be rendering after navigation
-    deadline = time.time() + 15
+    # Poll for the date cell, RELOADING the calendar each pass. When a booking
+    # fires just before its window opens (we run at opens_at − lead), the target
+    # day isn't in the calendar yet — Burhill adds it at the opening minute. So
+    # we keep reloading book_date.php until the day appears, then grab it the
+    # instant it opens (beating other members refreshing by hand).
+    date_url = page.url
+    # Wait until ~90s past the booking's opening time, but at least 30s from now.
+    deadline = time.time() + 30
+    opens_at = b.get("opens_at")
+    if opens_at:
+        try:
+            from datetime import datetime
+            secs_to_open = (datetime.fromisoformat(opens_at) - datetime.now()).total_seconds()
+            deadline = max(deadline, time.time() + secs_to_open + 90)
+        except Exception:
+            pass
+    # Hard cap so a genuinely-unavailable date can't poll forever
+    deadline = min(deadline, time.time() + 8 * 60)
+
+    first_pass = True
     while date_locator is None and time.time() < deadline:
+        if not first_pass:
+            try:
+                page.goto(date_url, wait_until="domcontentloaded", timeout=30_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(900)
+        first_pass = False
+
         for candidate in candidates:
             loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
             if loc.count() > 0:
@@ -464,7 +490,11 @@ def _navigate_to_date(page, booking: dict = None):
                 except Exception:
                     continue
         if date_locator is None:
-            page.wait_for_timeout(1000)
+            remaining = int(deadline - time.time())
+            if remaining > 0:
+                print(f"    Date {target_day} not in calendar yet — retrying "
+                      f"(up to {remaining}s) …", flush=True)
+            page.wait_for_timeout(2000)
 
     if date_locator is None:
         # Log what's actually on the page for debugging
