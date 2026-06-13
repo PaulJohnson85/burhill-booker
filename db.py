@@ -275,11 +275,13 @@ def set_user_admin(user_id: int, is_admin: bool):
 def ensure_an_admin_exists():
     """If no active admin exists, promote the first (lowest-id) user. Guarantees
     the owner always has admin access without relying on env vars."""
-    val = True if _is_pg() else 1
+    pg = _is_pg()
+    val = True if pg else 1
+    truthy = "is_admin = TRUE" if pg else "is_admin = 1"
     with get_engine().begin() as conn:
-        has = conn.execute(text("""
+        has = conn.execute(text(f"""
             SELECT 1 FROM users
-            WHERE is_admin IN (TRUE, 1) AND (status IS NULL OR status = 'active')
+            WHERE {truthy} AND (status IS NULL OR status = 'active')
             LIMIT 1
         """)).fetchone()
         if has:
