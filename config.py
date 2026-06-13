@@ -26,8 +26,9 @@ BOOKING = {
     # after this time. Set to "07:00" to grab the earliest available.
     "preferred_time": "09:00",
 
-    # How many minutes before bookings open to start the browser (safety buffer)
-    "lead_time_minutes": 2,
+    # How many minutes before bookings open to start the browser (safety buffer).
+    # The bot logs in and sits on the calendar, refreshing until the date opens.
+    "lead_time_minutes": 1,
 }
 
 # When does Burhill open bookings for a given day?
