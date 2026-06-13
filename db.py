@@ -272,6 +272,27 @@ def set_user_admin(user_id: int, is_admin: bool):
                      {"a": val, "id": user_id})
 
 
+def ensure_an_admin_exists():
+    """If no active admin exists, promote the first (lowest-id) user. Guarantees
+    the owner always has admin access without relying on env vars."""
+    val = True if _is_pg() else 1
+    with get_engine().begin() as conn:
+        has = conn.execute(text("""
+            SELECT 1 FROM users
+            WHERE is_admin IN (TRUE, 1) AND (status IS NULL OR status = 'active')
+            LIMIT 1
+        """)).fetchone()
+        if has:
+            return
+        first = conn.execute(text(
+            "SELECT id, email FROM users ORDER BY id LIMIT 1")).fetchone()
+        if first:
+            conn.execute(text("""
+                UPDATE users SET is_admin = :a, status = 'active' WHERE id = :id
+            """), {"a": val, "id": first[0]})
+            print(f"[bootstrap] promoted first user {first[1]} to admin", flush=True)
+
+
 def promote_admin_by_email(email: str):
     """Ensure the given email is an active admin (used to bootstrap the owner)."""
     val = True if _is_pg() else 1

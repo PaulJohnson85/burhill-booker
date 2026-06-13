@@ -854,6 +854,10 @@ if __name__ == "__main__":
             db.promote_admin_by_email(_admin_email)
         except Exception as e:
             print(f"admin bootstrap failed: {e}", flush=True)
+    try:
+        db.ensure_an_admin_exists()
+    except Exception as e:
+        print(f"admin fallback failed: {e}", flush=True)
     sched.init_scheduler()
     port = int(os.environ.get("PORT", 5001))
     print(f"\n🏌️  Burhill Booker running at http://localhost:{port}\n")
