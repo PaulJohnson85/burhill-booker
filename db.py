@@ -164,7 +164,9 @@ def init_db():
                 "ALTER TABLE birdies ADD COLUMN course TEXT",
                 "ALTER TABLE users ADD COLUMN cdh_number TEXT",
                 "ALTER TABLE users ADD COLUMN handicap TEXT",
-                "ALTER TABLE users ADD COLUMN handicap_updated TEXT"):
+                "ALTER TABLE users ADD COLUMN handicap_updated TEXT",
+                "ALTER TABLE users ADD COLUMN phone TEXT",
+                "ALTER TABLE users ADD COLUMN status TEXT"):
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -216,10 +218,83 @@ def update_user_credentials(user_id: int, burhill_user: str, burhill_pass_encryp
 
 def get_all_users() -> list:
     with get_engine().connect() as conn:
-        rows = conn.execute(
-            text("SELECT id, name, email, is_admin, created_at FROM users ORDER BY created_at")
-        ).mappings().fetchall()
+        rows = conn.execute(text("""
+            SELECT id, name, email, phone, cdh_number, handicap, is_admin,
+                   status, created_at
+            FROM users ORDER BY created_at
+        """)).mappings().fetchall()
         return [dict(r) for r in rows]
+
+
+def get_users_by_status(status: str) -> list:
+    """status 'pending'; treats NULL/'active' as active."""
+    with get_engine().connect() as conn:
+        if status == "active":
+            rows = conn.execute(text("""
+                SELECT * FROM users WHERE status IS NULL OR status = 'active'
+                ORDER BY created_at
+            """)).mappings().fetchall()
+        else:
+            rows = conn.execute(text(
+                "SELECT * FROM users WHERE status = :s ORDER BY created_at"),
+                {"s": status}).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+
+def set_user_status(user_id: int, status: str):
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE users SET status = :s WHERE id = :id"),
+                     {"s": status, "id": user_id})
+
+
+def update_user_admin_fields(user_id: int, name=None, email=None,
+                             phone=None, cdh_number=None):
+    """Admin edit of a user's profile fields (not passwords)."""
+    sets, params = [], {"id": user_id}
+    for col, val in (("name", name), ("email", email),
+                     ("phone", phone), ("cdh_number", cdh_number)):
+        if val is not None:
+            sets.append(f"{col} = :{col}")
+            params[col] = val.strip()
+    if not sets:
+        return
+    with get_engine().begin() as conn:
+        conn.execute(text(f"UPDATE users SET {', '.join(sets)} WHERE id = :id"),
+                     params)
+
+
+def set_user_admin(user_id: int, is_admin: bool):
+    val = True if _is_pg() else (1 if is_admin else 0)
+    if _is_pg():
+        val = is_admin
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE users SET is_admin = :a WHERE id = :id"),
+                     {"a": val, "id": user_id})
+
+
+def promote_admin_by_email(email: str):
+    """Ensure the given email is an active admin (used to bootstrap the owner)."""
+    val = True if _is_pg() else 1
+    with get_engine().begin() as conn:
+        conn.execute(text("""
+            UPDATE users SET is_admin = :a, status = 'active'
+            WHERE LOWER(email) = LOWER(:e)
+        """), {"a": val, "e": email})
+
+
+def delete_user(user_id: int):
+    """Remove a user and all their dependent rows (FK-safe). Birdies and games
+    are kept but detached (user_id nulled) so the history/feed survives."""
+    with get_engine().begin() as conn:
+        for tbl in ("bookings", "site_bookings", "member_search", "game_players"):
+            conn.execute(text(f"DELETE FROM {tbl} WHERE user_id = :id"),
+                         {"id": user_id})
+        # Keep the content, detach the author
+        conn.execute(text("UPDATE birdies SET user_id = NULL WHERE user_id = :id"),
+                     {"id": user_id})
+        conn.execute(text("UPDATE games SET creator_id = NULL WHERE creator_id = :id"),
+                     {"id": user_id})
+        conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
 
 
 def update_user_cdh(user_id: int, cdh_number: str):

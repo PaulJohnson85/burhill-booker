@@ -85,12 +85,20 @@ def register():
             burhill_pass_encrypted=crypto.encrypt(burhill_pass),
         )
         cdh = (f.get("cdh_number") or "").strip()
-        if cdh:
-            db.update_user_cdh(user_id, cdh)
-        row = db.get_user_by_id(user_id)
-        login_user(User(row), remember=True)
-        flash(f"Welcome, {name}! Your account is ready.", "success")
-        return redirect(url_for("index"))
+        phone = (f.get("phone") or "").strip()
+        if cdh or phone:
+            db.update_user_admin_fields(user_id, cdh_number=cdh or None,
+                                        phone=phone or None)
+        # New accounts need admin approval before they can sign in
+        db.set_user_status(user_id, "pending")
+        try:
+            notify.user_pending({"name": name, "email": email,
+                                 "phone": phone, "id": user_id})
+        except Exception:
+            pass
+        flash("Thanks — your account request has been sent for approval. "
+              "You'll be able to sign in once it's approved.", "success")
+        return redirect(url_for("login"))
     return render_template("register.html")
 
 
@@ -104,6 +112,10 @@ def login():
         row = db.get_user_by_email(email)
         if not row or not check_password_hash(row["password_hash"], password):
             flash("Incorrect email or password.", "error")
+            return render_template("login.html")
+        if (row.get("status") or "active") == "pending":
+            flash("Your account is awaiting approval — you'll be able to sign "
+                  "in once it's approved.", "error")
             return render_template("login.html")
         login_user(User(row), remember=True)
         return redirect(request.args.get("next") or url_for("index"))
@@ -728,14 +740,83 @@ def book_game(game_id):
 
 # ── Admin ────────────────────────────────────────────────────────────────────
 
+def _admin_only():
+    return current_user.is_admin
+
+
 @app.route("/admin")
 @login_required
 def admin():
-    if not current_user.is_admin:
+    if not _admin_only():
         return redirect(url_for("index"))
     return render_template("admin.html",
                            bookings=db.get_all_bookings(),
                            users=db.get_all_users())
+
+
+@app.route("/admin/users")
+@login_required
+def admin_users():
+    if not _admin_only():
+        return redirect(url_for("index"))
+    all_users = db.get_all_users()
+    pending = [u for u in all_users if (u.get("status") or "active") == "pending"]
+    active = [u for u in all_users if (u.get("status") or "active") != "pending"]
+    return render_template("admin_users.html",
+                           pending=pending, active=active, user=current_user)
+
+
+@app.route("/admin/users/approve/<int:user_id>", methods=["POST"])
+@login_required
+def admin_approve(user_id):
+    if not _admin_only():
+        return redirect(url_for("index"))
+    db.set_user_status(user_id, "active")
+    u = db.get_user_by_id(user_id)
+    flash(f"Approved {u['name'] if u else 'user'}.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/update/<int:user_id>", methods=["POST"])
+@login_required
+def admin_update_user(user_id):
+    if not _admin_only():
+        return redirect(url_for("index"))
+    f = request.form
+    db.update_user_admin_fields(
+        user_id,
+        name=f.get("name"),
+        email=(f.get("email") or "").strip().lower(),
+        phone=f.get("phone"),
+        cdh_number=f.get("cdh_number"),
+    )
+    flash("User updated.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/admin_toggle/<int:user_id>", methods=["POST"])
+@login_required
+def admin_toggle(user_id):
+    if not _admin_only():
+        return redirect(url_for("index"))
+    u = db.get_user_by_id(user_id)
+    if u and u["id"] != current_user.id:  # don't demote yourself
+        db.set_user_admin(user_id, not bool(u.get("is_admin")))
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/delete/<int:user_id>", methods=["POST"])
+@login_required
+def admin_delete_user(user_id):
+    if not _admin_only():
+        return redirect(url_for("index"))
+    if user_id == current_user.id:
+        flash("You can't delete your own account here.", "error")
+        return redirect(url_for("admin_users"))
+    u = db.get_user_by_id(user_id)
+    db.delete_user(user_id)
+    flash(f"Removed {u['name'] if u else 'user'}.", "success")
+    return redirect(url_for("admin_users"))
 
 
 # ── API ──────────────────────────────────────────────────────────────────────
@@ -766,6 +847,13 @@ def api_open_play_check():
 
 if __name__ == "__main__":
     db.init_db()
+    # Bootstrap the owner as an active admin (set ADMIN_EMAIL in Railway)
+    _admin_email = os.environ.get("ADMIN_EMAIL", "").strip()
+    if _admin_email:
+        try:
+            db.promote_admin_by_email(_admin_email)
+        except Exception as e:
+            print(f"admin bootstrap failed: {e}", flush=True)
     sched.init_scheduler()
     port = int(os.environ.get("PORT", 5001))
     print(f"\n🏌️  Burhill Booker running at http://localhost:{port}\n")

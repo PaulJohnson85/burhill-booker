@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Users — Burhill Booker</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/static/icon-192.png">
+  <meta name="theme-color" content="#0f1f0f">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f1f0f; }
+    .glass { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+  </style>
+</head>
+<body class="min-h-screen text-gray-100 font-sans overflow-x-hidden">
+
+  <header class="border-b border-white/10 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-y-3">
+    <div class="flex items-center gap-3">
+      <span class="text-3xl">👥</span>
+      <div>
+        <h1 class="text-xl font-bold text-white">Manage Users</h1>
+        <p class="text-xs text-red-400">Admin only</p>
+      </div>
+    </div>
+    <a href="/" class="text-sm text-gray-300 hover:text-white glass px-4 py-2 rounded-xl transition">← Dashboard</a>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="px-4 sm:px-6 pt-4">
+      {% for category, message in messages %}
+      <div class="glass rounded-xl px-4 py-3 text-sm mb-2
+                  {% if category == 'error' %}text-red-300 border-red-800{% else %}text-green-300{% endif %}">
+        {{ message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  <main class="px-4 sm:px-6 py-6 max-w-4xl mx-auto space-y-8">
+
+    <!-- Pending approval -->
+    {% if pending %}
+    <section>
+      <h2 class="text-sm font-bold text-amber-300 uppercase tracking-wider mb-3">
+        Awaiting Approval ({{ pending|length }})
+      </h2>
+      <div class="space-y-3">
+        {% for u in pending %}
+        <div class="glass rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-white font-semibold">{{ u.name }}</p>
+            <p class="text-xs text-gray-400">{{ u.email }}{% if u.phone %} · {{ u.phone }}{% endif %}
+              <span class="text-gray-600">· requested {{ u.created_at[:10] }}</span></p>
+          </div>
+          <div class="flex items-center gap-2">
+            <form method="post" action="/admin/users/approve/{{ u.id }}">
+              <button class="text-sm bg-green-700 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg font-semibold transition">Approve</button>
+            </form>
+            <form method="post" action="/admin/users/delete/{{ u.id }}"
+                  onsubmit="return confirm('Reject and remove {{ u.name }}?')">
+              <button class="text-sm text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-800 px-3 py-1.5 rounded-lg transition">Reject</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Active users -->
+    <section>
+      <h2 class="text-sm font-bold text-white uppercase tracking-wider mb-3">
+        Users ({{ active|length }})
+      </h2>
+      <div class="space-y-3">
+        {% for u in active %}
+        <div class="glass rounded-2xl p-4">
+          <form method="post" action="/admin/users/update/{{ u.id }}"
+                class="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Name</label>
+              <input name="name" value="{{ u.name }}"
+                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500">
+            </div>
+            <div>
+              <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Email</label>
+              <input name="email" value="{{ u.email }}"
+                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500">
+            </div>
+            <div>
+              <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">Phone</label>
+              <input name="phone" value="{{ u.phone or '' }}"
+                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500">
+            </div>
+            <div>
+              <label class="block text-[10px] text-gray-500 uppercase tracking-wider mb-1">CDH Number{% if u.handicap %} · HCP {{ u.handicap }}{% endif %}</label>
+              <input name="cdh_number" value="{{ u.cdh_number or '' }}"
+                class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500">
+            </div>
+            <div class="sm:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div class="flex items-center gap-2">
+                <button class="text-sm bg-green-700 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg font-semibold transition">Save</button>
+                {% if u.is_admin %}<span class="text-[10px] text-amber-300 border border-amber-700/50 px-2 py-0.5 rounded-full">admin</span>{% endif %}
+              </div>
+              <div class="flex items-center gap-2">
+                {% if u.id != user.id %}
+                <button type="submit" formaction="/admin/users/admin_toggle/{{ u.id }}"
+                  class="text-xs text-gray-400 hover:text-white border border-white/10 px-3 py-1.5 rounded-lg transition">
+                  {% if u.is_admin %}Revoke admin{% else %}Make admin{% endif %}
+                </button>
+                <button type="submit" formaction="/admin/users/delete/{{ u.id }}"
+                  formnovalidate
+                  onclick="return confirm('Remove {{ u.name }}? Their bookings are deleted; birdies stay in the feed.')"
+                  class="text-xs text-gray-500 hover:text-red-400 border border-white/10 hover:border-red-800 px-3 py-1.5 rounded-lg transition">
+                  Remove
+                </button>
+                {% else %}
+                <span class="text-xs text-gray-600">you</span>
+                {% endif %}
+              </div>
+            </div>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </main>
+</body>
+</html>

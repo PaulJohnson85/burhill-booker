@@ -77,3 +77,20 @@ Reason: {reason}
 Please log in to the Burhill portal to book manually.
 """,
     )
+
+
+def user_pending(user: dict):
+    base = os.environ.get("APP_URL", "").rstrip("/")
+    link = f"{base}/admin/users" if base else "the Admin → Users page"
+    _send(
+        subject=f"🆕 New account request — {user.get('name', '')}",
+        body=f"""A new person has requested a Burhill Booker account.
+
+Name:   {user.get('name', '')}
+Email:  {user.get('email', '')}
+Phone:  {user.get('phone', '') or '—'}
+
+They can't sign in until you approve them.
+Approve or remove at: {link}
+""",
+    )
