@@ -157,14 +157,13 @@
       <!-- Order of Merit -->
       <div class="glass rounded-2xl p-6">
         <h2 class="text-sm font-bold text-white uppercase tracking-wider mb-1">Order of Merit</h2>
-        <p class="text-[10px] text-gray-500 mb-4">{{ season }} season — birdies, then games played</p>
+        <p class="text-[10px] text-gray-500 mb-4">{{ season }} season</p>
         {% if merit %}
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-[10px] text-gray-500 uppercase tracking-wider">
               <th class="pb-2">Player</th>
               <th class="pb-2 text-right">🐦</th>
-              <th class="pb-2 text-right">Games</th>
               <th class="pb-2 text-right">HCP</th>
             </tr>
           </thead>
@@ -176,7 +175,6 @@
                 {{ entry.name }}
               </td>
               <td class="py-1 text-right font-bold">{{ entry.birdies }}</td>
-              <td class="py-1 text-right text-gray-400">{{ entry.games }}</td>
               <td class="py-1 text-right text-gray-400">{{ entry.handicap or '—' }}</td>
             </tr>
             {% endfor %}
