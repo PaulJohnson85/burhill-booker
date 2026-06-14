@@ -119,13 +119,24 @@ def run(booking_id: int, dry_run: bool = False):
 
                 confirmed = _book_slot(page, slot_url)
                 if confirmed:
+                    booked_course = booking.get("booked_course")
+                    requested = booking["course"]
+                    msg = f"Booked at {slot_time}"
+                    # Note when open play forced a different course than requested
+                    if booked_course and requested not in ("Golf", "Any") \
+                            and booked_course != requested:
+                        msg += (f" on the {booked_course} course "
+                                f"({requested} was in open play)")
+                    elif booked_course and requested in ("Golf", "Any"):
+                        msg += f" on the {booked_course} course"
                     db.update_status(
                         booking_id, "booked",
                         slot_time=slot_time,
                         booked_at=datetime.now().isoformat(),
-                        message=f"Booked at {slot_time}",
+                        message=msg,
                     )
-                    notify.booking_confirmed(booking, slot_time)
+                    notify.booking_confirmed(booking, slot_time,
+                                             booked_course=booked_course)
                     _p(f"[run_booking] ✅ booking {booking_id} confirmed at {slot_time}")
                     # Refresh the dashboard's view of live site bookings
                     if row.get("user_id"):

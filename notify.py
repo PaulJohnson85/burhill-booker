@@ -45,17 +45,22 @@ def _send(subject: str, body: str):
         print(f"⚠️  Email failed (non-fatal):\n{traceback.format_exc()}")
 
 
-def booking_confirmed(booking: dict, slot_time: str):
-    course = booking["course"] if booking["course"] != "Golf" else "Any"
+def booking_confirmed(booking: dict, slot_time: str, booked_course: str = None):
+    requested = booking["course"] if booking["course"] != "Golf" else "Any"
+    course_line = booked_course or requested
+    note = ""
+    if booked_course and requested not in ("Any",) and booked_course != requested:
+        note = (f"\nNote: the {requested} course was in open play, so the booker "
+                f"booked the {booked_course} course (not in open play).\n")
     _send(
         subject=f"✅ Tee time booked — {booking['date']} at {slot_time}",
         body=f"""Your tee time has been booked!
 
 Date:     {booking['date']}
 Time:     {slot_time}
-Course:   {course}
+Course:   {course_line}
 Players:  {booking['players']}
-
+{note}
 The Burhill Booker got there automatically at 07:00. Enjoy your round! ⛳
 """,
     )

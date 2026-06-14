@@ -132,6 +132,9 @@ def check_booking(date_str: str, course: str, preferred_time: str) -> dict:
     op_course = (info.get('open_play_course') or '').strip()
     tee_course = (info.get('tee_time_course') or '').strip()
 
+    # The booker books whichever course is NOT in open play that day.
+    alt = f"the {tee_course} Course (not in open play)" if tee_course else "the other course"
+
     # Is the chosen course the open play course today?
     if op_course.lower() in course.lower() or course.lower() in op_course.lower():
         # Is the preferred time during open play?
@@ -140,7 +143,10 @@ def check_booking(date_str: str, course: str, preferred_time: str) -> dict:
         if op_times == 'All Day':
             return {
                 'status': 'during_open_play',
-                'message': f"{course} Course is open play ALL DAY on {date_str}. No member tee times available.",
+                'message': (
+                    f"The {course} Course is open play ALL DAY on {date_str}. "
+                    f"The booker will book {alt} instead."
+                ),
                 'day_info': info,
             }
         if ends:
@@ -152,17 +158,18 @@ def check_booking(date_str: str, course: str, preferred_time: str) -> dict:
                 return {
                     'status': 'during_open_play',
                     'message': (
-                        f"{course} Course is open play from {op_times} on {date_str} ({info['day']}). "
-                        f"Your preferred time {preferred_time} falls within the open play window. "
-                        f"First available slot after open play: ~{ends}."
+                        f"The {course} Course is open play {op_times} on {date_str} "
+                        f"({info['day']}) and your time {preferred_time} is within it. "
+                        f"The booker will book {alt} instead."
                     ),
                     'day_info': info,
                 }
         return {
             'status': 'open_play_course',
             'message': (
-                f"{course} Course is the open play course on {date_str} ({info['day']}), "
-                f"open play runs {op_times}."
+                f"The {course} Course is the open play course on {date_str} "
+                f"({info['day']}), open play {op_times}. Your time {preferred_time} is "
+                f"after it, but the booker will use {alt} if {course} has no slot."
             ),
             'day_info': info,
         }

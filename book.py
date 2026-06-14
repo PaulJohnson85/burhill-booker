@@ -493,6 +493,7 @@ def _navigate_to_date(page, booking: dict = None):
     date_locator.click(force=True)
     page.wait_for_load_state("domcontentloaded", timeout=45_000)
     page.wait_for_timeout(800)
+    b["booked_course"] = chosen_course  # which course we actually landed on
     print(f"  On tee time page for {b['date']} ({chosen_course} course) → {page.url}", flush=True)
 
 
