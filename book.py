@@ -307,53 +307,57 @@ def _try_pick_member(page, partner: str) -> str:
         return f"error: {str(e)[:80]}"
 
 
-def _navigate_to_date(page, booking: dict = None):
-    print("Navigating to booking …")
-    b = booking or BOOKING
-    course = b["course"]
-    course_text = COURSE_LINK_TEXT.get(course, "Old Course")
+def _scan_for_date(page, target_day, candidates):
+    """One pass over the current page (and its iframes) for the date cell.
+    Returns a locator or None — no waiting."""
+    for candidate in candidates:
+        loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
+        if loc.count() > 0:
+            print(f"    Found date cell '{candidate}' ({loc.count()} matches)", flush=True)
+            return loc.first
+    loc = page.locator('td[onclick], a').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
+    if loc.count() > 0:
+        print(f"    Found date via fallback selector ({loc.count()} matches)", flush=True)
+        return loc.first
+    for frame in page.frames[1:]:
+        try:
+            loc = frame.locator('td').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
+            if loc.count() > 0:
+                print(f"    Found date cell in iframe {frame.url}", flush=True)
+                return loc.first
+        except Exception:
+            continue
+    return None
+
+
+def _reach_calendar(page, b, course_key):
+    """book_start → Golf Club Tee Times → <course> → participants flow.
+    Leaves the page on book_date.php. Returns the calendar URL."""
+    course_text = COURSE_LINK_TEXT.get(course_key, "Old Course")
 
     def click_and_wait(locator, label=""):
         try:
-            # force=True bypasses visibility checks — handles off-screen/hidden elements
             locator.click(timeout=30_000, force=True)
-        except Exception as e:
+        except Exception:
             page.screenshot(path=f"timeout_{label.replace(' ','_')}.png")
             print(f"    [TIMEOUT on '{label}'] page={page.url}")
-            print(f"    HTML snippet: {page.content()[:800]}")
             raise
         page.wait_for_load_state("domcontentloaded", timeout=30_000)
         page.wait_for_timeout(400)
         if label:
             print(f"    [{label}] → {page.url}")
 
-    # 1. Navigate directly to book_start.php — the Make Booking button is in a hidden
-    #    side menu so we can't click it; its form action is book_start.php
-    print(f"    [post-login] url={page.url}")
     page.goto(f"{BASE_URL}/book_start.php", wait_until="domcontentloaded", timeout=30_000)
     page.wait_for_timeout(500)
-    print(f"    [book_start] → {page.url}")
-    print(f"    [book_start links] {[a.inner_text().strip() for a in page.locator('a').all()[:20]]}")
+    click_and_wait(page.get_by_role("link", name="Golf Club Tee Times").first,
+                   "Golf Club Tee Times")
+    click_and_wait(page.get_by_role("link", name=course_text).first,
+                   f"Course: {course_text}")
+    print(f"    [after course select: {course_key}] → {page.url}", flush=True)
 
-    # 2. Click "Golf Club Tee Times" — match by link text
-    click_and_wait(
-        page.get_by_role("link", name="Golf Club Tee Times").first,
-        "Golf Club Tee Times")
-
-    # 3. Click the chosen course — match by link text
-    click_and_wait(
-        page.get_by_role("link", name=course_text).first,
-        f"Course: {course_text}")
-
-    print(f"    [after course select] → {page.url}")
-
-    # 4. Drive book_participants.php by its actual state. Selecting NumPeople may
-    #    auto-submit (onchange), so we loop: bump player count until the page shows
-    #    the desired CurNumPeople, then mark guests and submit the confirm form.
+    # Drive book_participants.php by its actual state (NumPeople onchange may
+    # auto-submit, so loop: bump count, mark guests/partner, submit confirm).
     players = int(b["players"])
-    _dump_forms(page, "participants page")
-
-    # Kick off: set the player count (its onchange may submit gotdata=1 itself)
     try:
         page.select_option('select[name="NumPeople"]', str(players))
         page.wait_for_timeout(800)
@@ -364,42 +368,27 @@ def _navigate_to_date(page, booking: dict = None):
         if "book_participants" not in page.url:
             print(f"    [Participants] progressed → {page.url}", flush=True)
             break
-
         state = _participants_state(page)
         cur = state.get("curNum")
-        forms = state.get("forms", [])
-        print(f"    [participants attempt {attempt}] curNum={cur} forms={forms} url={page.url}", flush=True)
-
+        print(f"    [participants attempt {attempt}] curNum={cur} url={page.url}", flush=True)
         cur_n = int(cur) if (cur and str(cur).isdigit()) else 1
 
         if cur_n < players:
-            # Page still shows fewer players — set count and submit gotdata=1 to re-render
             try:
                 page.select_option('select[name="NumPeople"]', str(players))
             except Exception:
                 pass
             if not _submit_participants_form(page, "1", "NumPeople submit"):
-                # gotdata=1 gone (likely already submitted) — re-loop to re-read state
                 page.wait_for_timeout(600)
             continue
 
-        # cur_n >= players: set up the other players (named member or guests),
-        # then confirm
         partner = (b.get("partner_name") or "").strip()
         if players > 1:
             _set_other_players(page, players, partner)
             if partner and attempt > 1:
-                # A previous confirm may have re-rendered with member search
-                # results — pick the matching member if so
                 pick = _try_pick_member(page, partner)
                 print(f"    [member pick] {pick}", flush=True)
                 page.wait_for_timeout(600)
-                try:
-                    body = page.evaluate("() => document.body.innerText.trim().slice(0, 500)")
-                    print(f"    [participants text] {body}", flush=True)
-                except Exception:
-                    pass
-        _dump_forms(page, "participants page before confirm")
         _submit_participants_form(page, "2", "Participants confirm")
         try:
             page.wait_for_url(lambda url: "book_participants" not in url, timeout=15_000)
@@ -408,11 +397,9 @@ def _navigate_to_date(page, booking: dict = None):
         page.wait_for_load_state("domcontentloaded", timeout=30_000)
         page.wait_for_timeout(600)
 
-        # Fail fast on a member lookup error rather than looping all attempts
         if partner and "book_participants" in page.url:
             try:
-                body = page.evaluate(
-                    "() => (document.body && document.body.innerText) || ''")
+                body = page.evaluate("() => (document.body && document.body.innerText) || ''")
             except Exception:
                 body = ""
             m = re.search(r"Error with participant[^\n]*", body, re.I)
@@ -421,29 +408,33 @@ def _navigate_to_date(page, booking: dict = None):
                     f"Burhill rejected playing partner '{partner}': {m.group(0).strip()} "
                     f"— use Verify in the booking form to get the exact member name")
 
-    print(f"    Current page: {page.url}")
+    return page.url
 
-    # 6. Click target date
-    target_day = b["date"].split("/")[0].lstrip("0")  # "16/06/2026" → "16"
-    target_day_padded = b["date"].split("/")[0]        # "16" (already 2 digits)
 
-    # Dates are <td> cells in a calendar table — match cell text allowing
-    # surrounding whitespace/newlines (exact ^16$ fails because cells contain "\n 16 \n")
-    date_locator = None
+def _navigate_to_date(page, booking: dict = None):
+    print("Navigating to booking …")
+    b = booking or BOOKING
+    print(f"    [post-login] url={page.url}")
+
+    target_day = b["date"].split("/")[0].lstrip("0")   # "21/06/2026" → "21"
+    target_day_padded = b["date"].split("/")[0]
     candidates = []
-    seen = set()
     for c in [target_day_padded, target_day]:
-        if c not in seen:
-            seen.add(c)
+        if c not in candidates:
             candidates.append(c)
 
-    # Poll for the date cell, RELOADING the calendar each pass. When a booking
-    # fires just before its window opens (we run at opens_at − lead), the target
-    # day isn't in the calendar yet — Burhill adds it at the opening minute. So
-    # we keep reloading book_date.php until the day appears, then grab it the
-    # instant it opens (beating other members refreshing by hand).
-    date_url = page.url
-    # Wait until ~90s past the booking's opening time, but at least 30s from now.
+    # Which courses to try, in preference order. A member's chosen course may
+    # not run that day (e.g. New is open-play on Sundays), so we always fall
+    # back to the other course.
+    course = b.get("course", "Golf")
+    if course == "New":
+        course_order = ["New", "Old"]
+    elif course == "Old":
+        course_order = ["Old", "New"]
+    else:  # "Golf" / "Any"
+        course_order = ["Old", "New"]
+
+    # Overall deadline: poll through the window opening (we fire at opens_at−lead)
     deadline = time.time() + 30
     opens_at = b.get("opens_at")
     if opens_at:
@@ -453,61 +444,56 @@ def _navigate_to_date(page, booking: dict = None):
             deadline = max(deadline, time.time() + secs_to_open + 90)
         except Exception:
             pass
-    # Hard cap so a genuinely-unavailable date can't poll forever
     deadline = min(deadline, time.time() + 8 * 60)
 
-    first_pass = True
+    date_locator = None
+    chosen_course = None
+    ci = 0
     while date_locator is None and time.time() < deadline:
-        if not first_pass:
-            try:
-                page.goto(date_url, wait_until="domcontentloaded", timeout=30_000)
-            except Exception:
-                pass
-            page.wait_for_timeout(900)
-        first_pass = False
+        course_key = course_order[ci % len(course_order)]
+        ci += 1
+        print(f"    Trying {course_key} course for date {target_day} …", flush=True)
+        try:
+            date_url = _reach_calendar(page, b, course_key)
+        except Exception as e:
+            print(f"    [reach calendar {course_key} failed] {str(e)[:140]}", flush=True)
+            # A partner-member error is fatal regardless of course
+            if "playing partner" in str(e):
+                raise
+            page.wait_for_timeout(1000)
+            continue
 
-        for candidate in candidates:
-            loc = page.locator('td').filter(has_text=re.compile(rf'^\s*{candidate}\s*$'))
-            if loc.count() > 0:
-                date_locator = loc.first
-                print(f"    Found date cell '{candidate}' ({loc.count()} matches)", flush=True)
-                break
-        if date_locator is None:
-            # Fallback: clickable element (a/td with onclick) containing the day number
-            loc = page.locator('td[onclick], a').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
-            if loc.count() > 0:
-                date_locator = loc.first
-                print(f"    Found date via fallback selector ({loc.count()} matches)", flush=True)
-        if date_locator is None:
-            # The calendar may be inside an iframe
-            for frame in page.frames[1:]:
+        # Poll THIS course's calendar briefly (reloading) before switching
+        sub_deadline = min(deadline, time.time() + 12)
+        first = True
+        while date_locator is None and time.time() < sub_deadline:
+            if not first:
                 try:
-                    loc = frame.locator('td').filter(has_text=re.compile(rf'^\s*{target_day}\s*$'))
-                    if loc.count() > 0:
-                        date_locator = loc.first
-                        print(f"    Found date cell in iframe {frame.url} ({loc.count()} matches)", flush=True)
-                        break
+                    page.goto(date_url, wait_until="domcontentloaded", timeout=30_000)
                 except Exception:
-                    continue
-        if date_locator is None:
-            remaining = int(deadline - time.time())
-            if remaining > 0:
-                print(f"    Date {target_day} not in calendar yet — retrying "
-                      f"(up to {remaining}s) …", flush=True)
-            page.wait_for_timeout(2000)
+                    pass
+                page.wait_for_timeout(900)
+            first = False
+            date_locator = _scan_for_date(page, target_day, candidates)
+            if date_locator is None and time.time() < sub_deadline:
+                page.wait_for_timeout(1500)
+        if date_locator is not None:
+            chosen_course = course_key
+            break
+        print(f"    Date {target_day} not on {course_key} course — "
+              f"trying the other course …", flush=True)
 
     if date_locator is None:
-        # Log what's actually on the page for debugging
         print(f"    [date_not_found] url={page.url}", flush=True)
-        tds = page.locator('td').all()
-        print(f"    Calendar tds ({len(tds)}): {[td.inner_text().strip()[:20] for td in tds[:40]]}", flush=True)
         page.screenshot(path="date_not_found.png")
-        raise RuntimeError(f"Date {target_day} not found in calendar — is the booking window open?")
+        raise RuntimeError(
+            f"Date {target_day} not found on either course — is the booking "
+            f"window open / is the course in open play?")
 
     date_locator.click(force=True)
     page.wait_for_load_state("domcontentloaded", timeout=45_000)
     page.wait_for_timeout(800)
-    print(f"  On tee time page for {b['date']} → {page.url}")
+    print(f"  On tee time page for {b['date']} ({chosen_course} course) → {page.url}", flush=True)
 
 
 def _find_slot(page, booking: dict = None) -> Optional[str]:
