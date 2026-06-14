@@ -85,6 +85,17 @@ def init_scheduler():
         misfire_grace_time=6 * 3600,
     )
 
+    # Send 24-hour tee-time reminders, checked hourly
+    _scheduler.add_job(
+        _send_reminders,
+        "interval",
+        hours=1,
+        next_run_time=_now_utc() + timedelta(minutes=4),
+        id="tee_reminders",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     # Refresh WHS handicaps weekly (Monday 06:00 London)
     _scheduler.add_job(
         _refresh_handicaps,
@@ -97,6 +108,35 @@ def init_scheduler():
         replace_existing=True,
         misfire_grace_time=6 * 3600,
     )
+
+
+def _send_reminders():
+    """Email each player a reminder ~24h before their booked tee time."""
+    import notify
+    now = datetime.now()
+    sent = 0
+    for b in db.get_all_bookings():
+        if b.get("status") != "booked" or b.get("reminded"):
+            continue
+        email = (b.get("user_email") or "").strip()
+        if not email:
+            continue
+        slot = (b.get("slot_time") or b.get("preferred_time") or "00:00")
+        try:
+            tee = datetime.strptime(f"{b['date']} {slot}", "%d/%m/%Y %H:%M")
+        except Exception:
+            continue
+        secs = (tee - now).total_seconds()
+        # Fire when the tee time is within the next 24h (and still in the future)
+        if 0 < secs <= 24 * 3600:
+            try:
+                notify.booking_reminder(email, b)
+                db.mark_reminded(b["id"])
+                sent += 1
+            except Exception as e:
+                print(f"[reminders] failed for booking {b['id']}: {e}", flush=True)
+    if sent:
+        print(f"[reminders] sent {sent} reminder(s)", flush=True)
 
 
 def _refresh_handicaps():

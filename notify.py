@@ -26,23 +26,46 @@ def _cfg():
     }
 
 
-def _send(subject: str, body: str):
+def _send(subject: str, body: str, to: str = None):
     cfg = _cfg()
-    if not all([cfg["to"], cfg["user"], cfg["pwd"]]):
+    recipient = (to or cfg["to"]).strip()
+    if not all([recipient, cfg["user"], cfg["pwd"]]):
         return  # not configured — skip silently
     try:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"]    = cfg["user"]
-        msg["To"]      = cfg["to"]
+        msg["To"]      = recipient
         msg.set_content(body)
         with smtplib.SMTP(cfg["host"], cfg["port"], timeout=15) as s:
             s.starttls()
             s.login(cfg["user"], cfg["pwd"])
             s.send_message(msg)
-        print(f"📧 Email sent: {subject}")
+        print(f"📧 Email sent to {recipient}: {subject}")
     except Exception:
         print(f"⚠️  Email failed (non-fatal):\n{traceback.format_exc()}")
+
+
+def booking_reminder(to_email: str, booking: dict):
+    """24-hour reminder to the player who the booking belongs to."""
+    course = booking.get("course")
+    if course in ("Golf", None, ""):
+        course = "Burhill"
+    slot = booking.get("slot_time") or booking.get("preferred_time") or ""
+    _send(
+        to=to_email,
+        subject=f"⛳ Reminder: tee time tomorrow — {booking['date']} at {slot}",
+        body=f"""This is your 24-hour reminder for your Burhill tee time.
+
+Date:     {booking['date']}
+Time:     {slot}
+Course:   {course}
+Players:  {booking.get('players', '')}
+
+See you on the first tee! 🏌️
+If you can no longer play, please cancel via the Burhill Booker or the club.
+""",
+    )
 
 
 def booking_confirmed(booking: dict, slot_time: str, booked_course: str = None):

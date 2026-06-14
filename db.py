@@ -166,7 +166,8 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN handicap TEXT",
                 "ALTER TABLE users ADD COLUMN handicap_updated TEXT",
                 "ALTER TABLE users ADD COLUMN phone TEXT",
-                "ALTER TABLE users ADD COLUMN status TEXT"):
+                "ALTER TABLE users ADD COLUMN status TEXT",
+                "ALTER TABLE bookings ADD COLUMN reminded TEXT"):
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -733,6 +734,12 @@ def clear_finished_bookings(user_id: int) -> int:
             WHERE user_id = :uid AND status IN ('failed', 'cancelled', 'no_slots')
         """), {"uid": user_id})
         return result.rowcount or 0
+
+
+def mark_reminded(booking_id: int):
+    with get_engine().begin() as conn:
+        conn.execute(text("UPDATE bookings SET reminded = :ts WHERE id = :id"),
+                     {"ts": datetime.now().isoformat(), "id": booking_id})
 
 
 def delete_bookings_by_status(status: str) -> int:
